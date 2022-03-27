@@ -3,13 +3,15 @@ from pathlib import Path
 import functools
 
 from .url import URL
+from .exceptions import RemyError
 
 memoize = functools.lru_cache()
 
 
 class Notecard(object):
-    def __init__(self, primary_label, content, source_url = None):
-        self.primary_label = primary_label
+    def __init__(self, labels, content, source_url = None):
+        self.primary_label = labels[0]
+        self.labels = labels
         self.content = content
         self.source_url = source_url
 
@@ -22,9 +24,9 @@ def from_file(path):
     path = Path(path)
     url = URL(path)
 
-    start_line_re = file_grammar(True)['start_line']
+    start_line_re = notecard_grammar(True)['start_line']
 
-    last_label = None
+    last_labels = None
     current_content = [ ]
 
     with path.open() as fd:
@@ -32,20 +34,23 @@ def from_file(path):
             m = start_line_re.match(line)
 
             if m:
-                if last_label is not None:
-                    yield Notecard(last_label, ''.join(current_content), url)
+                if last_labels is not None:
+                    yield Notecard(last_labels, ''.join(current_content), url)
 
-                last_label = m.group('label')
+                last_labels = m.group('labels').split()
                 current_content = [ ]
             else:
                 current_content.append(line)
 
-    if last_label is not None:
-        yield Notecard(last_label, ''.join(current_content), url)
+    if last_labels is not None:
+        yield Notecard(last_labels, ''.join(current_content), url)
 
 
-def from_path( path):
+def from_path(path):
     path = Path(path)
+
+    if path.name.startswith('.'):
+        return
 
     if not path.is_dir():
         yield from from_file(path)
@@ -55,16 +60,31 @@ def from_path( path):
         yield from from_path(p)
 
 
+def from_url(url):
+    url = URL(url)
+
+    if url.scheme != 'file':
+        raise RemyError("only 'file' scheme is currently supported for URLs. url: '{}'".format(url))
+
+    yield from from_path(url.path)
+
+
 @memoize
-def file_grammar(compile = True):
+def notecard_grammar(compile = True):
     g = { }
 
     g['prefix']          = r'NOTECARD'
     g['label_character'] = r'[-_0-9a-zA-Z]'
     g['label']           = r'{label_character}+'
+    g['labels_tail']     = r'(?:\s+{label})'
+    g['labels']          = r'{label}{labels_tail}?'
     g['endline']         = r'\r\n|\n'
 
-    g['start_line']      = r'{prefix}\s+{label}\s*{endline}'
+    g['lbracket'] = r'\['
+    g['rbracket'] = r'\]'
+    g['reference'] = r'{lbracket}\s*[^\]]*\s*{rbracket}'
+
+    g['start_line']      = r'{prefix}\s+{labels}\s*{endline}'
 
     if not compile:
         return g

@@ -26,3 +26,7 @@ class NotecardCache(object):
         self.__cards_by_label = out
 
         return out
+
+
+    def find_card_by_label(self, label):
+        return self.cards_by_label.get(label, None)

@@ -11,6 +11,7 @@ def test_from_file():
 
     for card in notecard.from_file(DATA / 'test_notes/notes_01'):
         print(card)
+        print(card.source_url)
         print(card.labels)
         print(card.content)
 

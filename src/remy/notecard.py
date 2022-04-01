@@ -1,11 +1,8 @@
-import re
 from pathlib import Path
-import functools
 
 from .url import URL
 from .exceptions import RemyError
-
-memoize = functools.lru_cache()
+from .grammar import notecard_grammar
 
 
 class Notecard(object):
@@ -24,7 +21,7 @@ def from_file(path):
     path = Path(path)
     url = URL(path)
 
-    start_line_re = notecard_grammar(True)['start_line']
+    start_line_re = notecard_grammar(True)['notecard_start_line']
 
     last_labels = None
     current_content = [ ]
@@ -35,7 +32,7 @@ def from_file(path):
 
             if m:
                 if last_labels is not None:
-                    yield Notecard(last_labels, ''.join(current_content), url)
+                    yield Notecard(last_labels, ''.join(current_content), url._replace(fragment=str(line_no)))
 
                 last_labels = m.group('labels').split()
                 current_content = [ ]
@@ -43,7 +40,7 @@ def from_file(path):
                 current_content.append(line)
 
     if last_labels is not None:
-        yield Notecard(last_labels, ''.join(current_content), url)
+        yield Notecard(last_labels, ''.join(current_content), url._replace(fragment=str(line_no)))
 
 
 def from_path(path):
@@ -67,46 +64,3 @@ def from_url(url):
         raise RemyError("only 'file' scheme is currently supported for URLs. url: '{}'".format(url))
 
     yield from from_path(url.path)
-
-
-@memoize
-def notecard_grammar(compile = True):
-    g = { }
-
-    g['prefix']          = r'NOTECARD'
-    g['label_character'] = r'[-_0-9a-zA-Z]'
-    g['label']           = r'{label_character}+'
-    g['labels_tail']     = r'(?:\s+{label})'
-    g['labels']          = r'{label}{labels_tail}?'
-    g['endline']         = r'\r\n|\n'
-
-    g['lbracket'] = r'\['
-    g['rbracket'] = r'\]'
-    g['reference'] = r'{lbracket}\s*[^\]]*\s*{rbracket}'
-
-    g['start_line']      = r'{prefix}\s+{labels}\s*{endline}'
-
-    if not compile:
-        return g
-
-    expanded = expand_grammar(g)
-    named = { k : '(?P<{}>{})'.format(k, r) for k, r in expanded.items() }
-
-    g = { k : r.format(**named) for k, r in g.items() }
-    g = { k : re.compile(r) for k, r in g.items() }
-
-    return g
-
-
-def expand_grammar(g):
-    grouped = { k : '(?:{})'.format(v) for k, v in g.items() }
-
-    def expand(r):
-        x = None
-
-        while x != r:
-            x, r = r, r.format(**grouped)
-
-        return x
-
-    return { k : expand(r) for k, r in g.items() }

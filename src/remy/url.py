@@ -29,3 +29,19 @@ class URL(ParseResult):
             parsed.query if parsed else '',
             parsed.fragment if parsed else ''
         )
+
+
+    def geturl(self):
+        path = str(self.path)
+
+        if path == '.':
+            path = ''
+
+        return ParseResult(
+            self.scheme,
+            self.netloc,
+            path,
+            self.params,
+            self.query,
+            str(self.fragment)
+        ).geturl()

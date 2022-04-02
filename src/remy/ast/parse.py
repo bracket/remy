@@ -24,9 +24,7 @@ def parse_content(content):
 
         if m.group('field'):
             f = field_re.match(m.group())
-            yield Field(m.group())
-
-            # yield (f.group('label'), f.group('field_content'))
+            yield Field(m.group(), f.group('label'), f.group('field_content'))
         elif m.group('reference'):
             r = reference_re.match(m.group())
             url = URL(r.group('url'))

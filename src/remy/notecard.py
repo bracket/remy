@@ -23,6 +23,7 @@ def from_file(path):
 
     start_line_re = notecard_grammar(True)['notecard_start_line']
 
+    last_line_no = 0
     last_labels = None
     current_content = [ ]
 
@@ -32,15 +33,16 @@ def from_file(path):
 
             if m:
                 if last_labels is not None:
-                    yield Notecard(last_labels, ''.join(current_content), url._replace(fragment=str(line_no)))
+                    yield Notecard(last_labels, ''.join(current_content), url._replace(fragment=str(last_line_no)))
 
+                last_line_no = line_no
                 last_labels = m.group('labels').split()
                 current_content = [ ]
             else:
                 current_content.append(line)
 
     if last_labels is not None:
-        yield Notecard(last_labels, ''.join(current_content), url._replace(fragment=str(line_no)))
+        yield Notecard(last_labels, ''.join(current_content), url._replace(fragment=str(last_line_no)))
 
 
 def from_path(path):

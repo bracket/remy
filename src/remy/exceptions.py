@@ -1,0 +1,2 @@
+class RemyError(Exception):
+    pass

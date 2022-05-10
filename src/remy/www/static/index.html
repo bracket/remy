@@ -1,0 +1,25 @@
+<!doctype html>
+
+<html>
+    <head>
+    <meta charset="utf-8"/>
+        <title>Remy</title>
+        <link rel="stylesheet" href="static/remy.css" />
+    </head>
+    <body>
+        <div id="content"></div>
+    </body>
+
+    <!-- <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> -->
+    <script src="static/marked.min.js"></script>
+    <script>
+        function get_card(element, label) {
+            fetch('http://localhost:5000/api/notecard/' + label)
+                .then(response => response.json())
+                .then(data => element.innerHTML = marked.parse(data.markup))
+            ;
+        }
+
+        get_card(document.getElementById('content'), 'main');
+    </script>
+</html>

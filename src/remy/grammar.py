@@ -14,6 +14,7 @@ def notecard_grammar(compile = True):
     g['labels_tail']     = r'(?:\s+{label})'
     g['labels']          = r'{label}{labels_tail}?'
     g['endline']         = r'\r\n|\n'
+    g['endblock']       = r'(?:\r\n|\n)(?:\r\n|\n)'
 
     g['field_content'] = r'.*'
     g['field'] = r':{label}:{field_content}{endline}'

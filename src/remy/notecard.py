@@ -4,17 +4,54 @@ from .url import URL
 from .exceptions import RemyError
 from .grammar import notecard_grammar
 
+null = object()
 
 class Notecard(object):
     def __init__(self, labels, content, source_url = None):
         self.primary_label = labels[0]
         self.labels = labels
         self.content = content
+
         self.source_url = source_url
+
+        self.__first_block = null
 
 
     def __repr__(self):
         return "Notecard('{}')".format(self.primary_label)
+
+
+    @property
+    def first_block(self):
+        from remy.ast.parse import parse_content
+        from remy.ast import Text
+
+        if self.__first_block is not null:
+            return self.__first_block
+
+        first_node_content = next((
+            n.content.strip()
+            for n in parse_content(self.content)
+            if isinstance(n, Text) and n.content.strip()
+        ), None)
+
+        if first_node_content is None:
+            self.__first_block = None
+            return None
+
+        block_re = notecard_grammar(True)['endblock']
+
+        m = block_re.search(first_node_content)
+
+        if m:
+            first_block = first_node_content[:m.start()]
+        else:
+            first_block = first_node_content
+
+        self.__first_block = first_block
+
+        return first_block
+
 
 
 def from_file(path):

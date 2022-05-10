@@ -1,51 +1,69 @@
 from flask import Flask, request, url_for
 import click
+import re
 from markupsafe import escape
 
-app = Flask('remy')
+from pathlib import Path
+
+FILE = Path(__file__).absolute()
+HERE = FILE.parent
+
+
+app = Flask(
+    'remy',
+    static_url_path = '/static',
+    static_folder = HERE / 'static',
+    template_folder = HERE / 'templates'
+)
+
 notecard_cache = None
 
 @app.route('/')
 def root():
-    card = notecard_cache.find_card_by_label('main')
-
-    return '''
-        <html>
-            <title>main</title>
-            <body>
-                {}
-            </body>
-        </html>
-    '''.format(escape(card.content))
+    return app.send_static_file('index.html')
 
 
-@app.route('/notecard/<card_label>')
-def notecard(card_label):
+def markup_card(card):
     from remy.ast.parse import parse_content
     from remy.ast import Text, Reference, Field
 
-    card = notecard_cache.find_card_by_label(card_label)
+    newline_re = re.compile(r'\r?\n')
 
     out = [ ]
 
     for node in parse_content(card.content.strip()):
         if isinstance(node, Text):
             content = escape(node.content)
-            content = '<br/>\n'.join(content.splitlines())
+            content = newline_re.sub('<br/>\n', content)
             out.append(content)
         elif isinstance(node, Reference):
             out.append(format_reference(node))
-            out.append('<br/>')
         elif isinstance(node, Field):
             out.append(format_field(node))
         else:
             out.append(escape(str(node)))
 
     out.append('<br/><br/>')
-    edit_url = url_for('vim', card_label=card_label)
+    edit_url = url_for('vim', card_label=card.primary_label)
     out.append('<a href="{}" target="_blank">edit</a>'.format(edit_url))
 
     return ''.join(out)
+
+
+@app.route('/notecard/<card_label>')
+def notecard(card_label):
+    card = notecard_cache.find_card_by_label(card_label)
+    return markup_card(card)
+
+
+@app.route('/api/notecard/<card_label>')
+def notecard_js(card_label):
+    card = notecard_cache.find_card_by_label(card_label)
+
+    if not card:
+        return 404
+
+    return { 'markup' : markup_card(card) }
 
 
 def format_reference(ref):
@@ -66,7 +84,11 @@ def format_reference(ref):
 
         target_url = url_for('notecard', card_label=url.netloc)
 
-        return '<a href="{}">{}</a>'.format(target_url, first_line)
+        # return r'<a href="{}" onclick="get_card();">{}</a>'.format(target_url, first_line)
+        quoted = "'{}'".format(url.netloc)
+        out = r'<div class="card" onClick="get_card(this, {});">{}</div>'.format(quoted, first_line)
+        print(out)
+        return out
     elif url.scheme == 'rfc822msgid':
         message_id = url_escape(url.netloc)
         target_url = 'https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{}'.format(message_id)

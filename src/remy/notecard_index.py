@@ -1,5 +1,6 @@
 from .notecard_cache import NotecardCache
 from sortedcontainers import SortedSet
+from .exceptions import RemyError
 
 import sys
 
@@ -45,21 +46,34 @@ class NotecardIndex(object):
         return index
 
 
-    def find(self, low = null, high=null):
+    def find(self, low = null, high=null, snap=None):
         if low is not null:
-            low_key = ((id(type(low)), low),)
+            low_key = (id(type(low)), low)
         else:
-            low_key = ((0,),)
+            low_key = (0,)
 
         if high is not null:
             high_key = (id(type(high)), high)
         elif low is not null:
-            high_key = low_key[0]
+            high_key = low_key
         else:
             high_key = (sys.maxsize, )
 
-        for key, label in  self.index.irange(low_key):
-            if high_key and key > high_key:
+        low_index = self.index.bisect_left((low_key,))
+
+        if snap is not None:
+            if snap == 'soft':
+                low_index = max(0, low_index - 1)
+            elif snap == 'hard':
+                low_index = max(0, low_index - 1)
+                key, label = self.index[low_index]
+                low_index = self.index.bisect_left((key,))
+            else:
+                raise RemyError("snap must be one of None, 'soft', or 'hard', snap: {}".format(repr(snap)))
+
+
+        for key, label in  self.index.islice(low_index):
+            if key > high_key:
                 return
 
             yield (key[1], label)

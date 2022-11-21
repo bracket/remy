@@ -2,6 +2,8 @@ from .notecard_cache import NotecardCache
 from sortedcontainers import SortedSet
 from .exceptions import RemyError
 
+from groupby import list_groupby
+
 import sys
 
 null = object()
@@ -13,6 +15,7 @@ class NotecardIndex(object):
         self.field_parser = field_parser
 
         self.__index = None
+        self.__inverse = None
 
 
     @property
@@ -44,6 +47,16 @@ class NotecardIndex(object):
         self.__index = index
 
         return index
+
+
+    @property
+    def inverse(self):
+        if self.__inverse is not None:
+            return self.__inverse
+
+        self.__inverse = list_groupby((label, value) for (_, value), label in self.index)
+
+        return self.__inverse
 
 
     def find(self, low = null, high=null, snap=None):

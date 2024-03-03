@@ -1,7 +1,6 @@
 import click
 from .app import create_app
 
-
 @click.command
 @click.option('--cache', help='Location of Remy notecard cache.', required=True)
 def main(cache):

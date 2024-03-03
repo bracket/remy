@@ -1,8 +1,11 @@
-from flask import Flask, request, url_for
+from flask import Flask, request, url_for, redirect
 import re
 from markupsafe import escape
 
 from pathlib import Path
+import functools
+
+memoize = functools.lru_cache(None)
 
 FILE = Path(__file__).absolute()
 HERE = FILE.parent
@@ -17,9 +20,27 @@ app = Flask(
 
 notecard_cache = None
 
-@app.route('/')
-def root():
-    return app.send_static_file('index.html')
+@memoize
+def vite_url():
+    import os
+    from remy.url import URL
+
+    vite_url = os.environ.get('REMY_VITE_URL')
+
+    if vite_url is None:
+        return None
+
+    return URL(vite_url)
+
+
+@app.route('/', defaults = { 'path' : '' })
+@app.route('/<path:path>')
+def root(path):
+    if vite_url() is None:
+        return app.send_static_file('index.html')
+    else:
+        full_url = vite_url()._replace(path=path)
+        return redirect(full_url.geturl())
 
 
 def markup_card(card):
@@ -55,6 +76,12 @@ def notecard(card_label):
     return markup_card(card)
 
 
+@app.route('/api')
+def api():
+    return 204
+
+
+
 @app.route('/api/notecard/<card_label>')
 def notecard_js(card_label):
     card = notecard_cache.find_card_by_label(card_label)
@@ -62,7 +89,9 @@ def notecard_js(card_label):
     if not card:
         return 404
 
-    return { 'markup' : markup_card(card) }
+    return {
+        'raw' : card.content
+    }
 
 
 def format_reference(ref):

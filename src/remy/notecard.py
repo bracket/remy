@@ -53,7 +53,6 @@ class Notecard(object):
         return first_block
 
 
-
 def from_file(path):
     path = Path(path)
     url = URL(path)

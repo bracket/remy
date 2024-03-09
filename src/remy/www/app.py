@@ -78,7 +78,7 @@ def notecard(card_label):
 
 @app.route('/api')
 def api():
-    return 204
+    return ('', 204)
 
 
 
@@ -179,7 +179,7 @@ def create_app(cache_url):
     url = URL(cache_url)
 
     if not url.scheme:
-        url = URL(Path(cache).absolute())
+        url = URL(Path(cache_url).absolute())
 
     # ('Starting at cache: {}'.format(url.geturl()))
     notecard_cache = NotecardCache(url)

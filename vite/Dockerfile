@@ -1,4 +1,4 @@
-FROM alpine:latest as base
+FROM alpine:latest AS remy-vite
 
 ENV ASDF_DIR /asdf
 
@@ -18,7 +18,7 @@ RUN . /asdf/asdf.sh \
 # my machine.  The tarball in the next COPY/RUN is a precompiled version of the
 # python and node interpreters but needs to be rebuilt when versions change.
 # The tarball can be created with the 'tar_snapshot.sh' script
-# 
+#
 # TODO: Check this compiles with optimization
 #
 # RUN . /asdf/asdf.sh \
@@ -29,11 +29,15 @@ RUN . /asdf/asdf.sh \
 
 RUN --mount=type=bind,target=/mnt/build \
     cd / && tar -xjvf /mnt/build/root_asdf.tbz2
-
+#
 
 # RUN --mount=type=bind,target=/mnt/build \
 #    cd / && tar -xjvf /mnt/build/remy_vite.tbz2
 
-COPY /vite /app
+COPY vite/ /app
+
+RUN . /asdf/asdf.sh \
+    && cd /app \
+    && npm install
 
 CMD sleep infinity

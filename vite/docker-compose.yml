@@ -1,0 +1,15 @@
+version: '3'
+services:
+  remy-vite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-vite
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        . /asdf/asdf.sh
+        cd /app
+        npm install
+        npx -c "vite build"
+      EOF'

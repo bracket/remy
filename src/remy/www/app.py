@@ -14,7 +14,7 @@ HERE = FILE.parent
 app = Flask(
     'remy',
     static_url_path = '/static',
-    static_folder = HERE / 'static',
+    static_folder = HERE / 'static/vite',
     template_folder = HERE / 'templates'
 )
 
@@ -27,19 +27,19 @@ def vite_url():
 
     vite_url = os.environ.get('REMY_VITE_URL')
 
-    if vite_url is None:
+    if not vite_url:
         return None
 
     return URL(vite_url)
 
 
-@app.route('/', defaults = { 'path' : '' })
-@app.route('/<path:path>')
+# @app.route('/', defaults = {'path': 'index.html' })
+# @app.route('/<path:path>')
 def root(path):
     if vite_url() is None:
-        return app.send_static_file('index.html')
+        return app.send_static_file(str(path))
     else:
-        full_url = vite_url()._replace(path=path)
+        full_url = vite_url()._replace(path = path)
         return redirect(full_url.geturl())
 
 
@@ -70,7 +70,6 @@ def markup_card(card):
     return ''.join(out)
 
 
-@app.route('/notecard/<card_label>')
 def notecard(card_label):
     card = notecard_cache.find_card_by_label(card_label)
     return markup_card(card)
@@ -83,7 +82,7 @@ def api():
 
 
 @app.route('/api/notecard/<card_label>')
-def notecard_js(card_label):
+def notecard_json(card_label):
     card = notecard_cache.find_card_by_label(card_label)
 
     if not card:

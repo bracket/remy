@@ -17,7 +17,7 @@ def notecard_grammar(compile = True):
     g['endblock']       = r'(?:\r\n|\n)(?:\r\n|\n)'
 
     g['field_content'] = r'.*'
-    g['field'] = r':{label}:{field_content}{endline}'
+    g['field'] = r':{label}:\s*{field_content}{endline}'
 
     g['notecard_start_line']      = r'{prefix}\s+{labels}\s*{endline}'
 

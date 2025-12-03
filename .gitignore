@@ -1,0 +1,36 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Egg packages
+*.egg
+*.egg-info/
+.eggs/
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# pytest
+.pytest_cache/
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific directories
+scratch/
+issues/

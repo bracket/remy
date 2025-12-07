@@ -1,105 +1,63 @@
-from remy.exceptions import RemyError
-from remy.grammar import memoize, expand_grammar
+"""
+Lark grammar specification for WHERE clause query language.
 
-def tokenize_query(query):
-    t_re = token_re()
+This module defines the grammar for parsing SQL-like WHERE clauses
+used to filter notecards based on metadata.
+"""
 
-    offset    =  0
-    query_end = len(query)
+from lark import Lark
 
-    while offset < query_end:
-        m = t_re.match(query, offset)
+# Lark grammar for WHERE clause queries
+# Uses LALR parser for performance
+QUERY_GRAMMAR = r"""
+    ?start: or_expr
 
-        if not m:
-            raise RemyError('unable to find token in query at offset:{} {}'.format(offset, query[offset:]))
+    ?or_expr: and_expr
+            | or_expr _OR and_expr   -> or_op
 
-        last = m.lastgroup
-        value = m.group(last)
+    ?and_expr: not_expr
+             | and_expr _AND not_expr -> and_op
 
-        offset = m.end()
+    ?not_expr: _NOT not_expr          -> not_op
+             | comparison
 
-        yield (last, value)
+    ?comparison: in_expr
+               | primary COMP_OP primary -> compare
 
+    ?in_expr: primary _IN list_literal -> in_op
+            | primary
 
-@memoize
-def token_grammar(expand=False):
-    g = { }
+    ?primary: identifier
+            | literal
+            | "(" or_expr ")"
 
-    g['identifier'] = r'[_a-zA-Z][_a-zA-Z0-9]*'
+    identifier: DOTTED_NAME
+    literal: STRING | NUMBER | TRUE | FALSE | NULL
+    list_literal: "[" [literal ("," literal)*] "]"
 
-    # Using unicode code points to avoid escaping and formatting issues
+    _AND.2: /\band\b/i
+    _OR.2: /\bor\b/i
+    _NOT.2: /\bnot\b/i
+    _IN.2: /\bin\b/i
 
-    g['hyphen']     = r'\u002d' # '-'
-    g['lparen']     = r'\u0028' # '('
-    g['rparen']     = r'\u0029' # ')'
-    g['lbracket']   = r'\u005b' # '['
-    g['backslash']  = r'\u005c' # '\\'
-    g['rbracket']   = r'\u005d' # ']'
-    g['lbrace']     = r'\u007b' # '{'
-    g['rbrace']     = r'\u007d' # '}'
-    g['langle']     = r'\u003c' # '<'
-    g['rangle']     = r'\u003e' # '>'
-    g['comma']      = r','
-    g['colon']      = r':'
-    g['semicolon']  = r';'
-    g['newline']    = r'\r?\n'
-    g['ws']         = r'[ \t\r\n]+'
+    COMP_OP: "=" | "!=" | "<=" | ">=" | "<" | ">"
 
-    g['single_quote'] = r'\u0027'
-    g['double_quote'] = r'\u0022'
+    TRUE.2: /\btrue\b/i
+    FALSE.2: /\bfalse\b/i
+    NULL.2: /\bnull\b/i
 
-    g['escape_single'] = r'{backslash}(?:{backslash}|{single_quote})'
-    g['escape_double'] = r'{backslash}(?:{backslash}|{double_quote})'
+    DOTTED_NAME: /[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
 
-    g['single_quoted_string'] = r'{single_quote}(?:{escape_single}|[^\u0027])*{single_quote}'
-    g['double_quoted_string'] = r'{double_quote}(?:{escape_double}|[^\u0022])*{double_quote}'
-    g['string']               = r'{single_quoted_string}|{double_quoted_string}'
+    STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
 
-    g['digit']    = r'[0-9]'
-    g['digits']   = r'{digit}+'
-    g['sign']     = r'[-+]'
-    g['integer']  = r'{sign}?{digits}'
+    NUMBER: SIGNED_NUMBER
 
-    g['point']       = r'\u002e'
-    g['exponent']    = r'[eE]{integer}'
-    g['right_float'] = r'{sign}?{point}{digits}{exponent}?'
-    g['left_float']  = r'{integer}{point}{digits}?{exponent}?'
-    g['exp_float']   = r'{integer}{exponent}'
-    g['float']       = r'{left_float}|{right_float}|{exp_float}'
-
-    g['number']      = r'{float}|{integer}'
+    %import common.SIGNED_NUMBER
+    %import common.WS
+    %ignore WS
+"""
 
 
-    g['literal'] = r'{string}|{number}'
-
-    tokens = [
-        'identifier',
-        'literal',
-        'lparen',   'rparen',
-        'lbracket', 'rbracket',
-        'lbrace',   'rbrace',
-        'langle',   'rangle',
-        'colon',    'semicolon',
-        'comma',    'hyphen',
-        'ws',
-        'point',
-    ]
-
-    g['token'] = '|'.join('{{{}}}'.format(t) for t in tokens)
-
-    if not expand:
-        return g
-
-    expanded = expand_grammar(g)
-    named = { k : '(?P<{}>{})'.format(k, r) for k, r in expanded.items() }
-
-    return { k : r.format(**named) for k, r in g.items() }
-
-
-@memoize
-def token_re():
-    import re
-    from pprint import pprint
-
-    g = token_grammar(True)
-    return re.compile(g['token'])
+def get_parser():
+    """Get or create the Lark parser instance."""
+    return Lark(QUERY_GRAMMAR, parser='lalr')

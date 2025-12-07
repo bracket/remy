@@ -59,8 +59,11 @@ class QueryTransformer(Transformer):
         if token.type == 'STRING':
             # Remove quotes and process escape sequences
             value = str(token)[1:-1]  # Remove surrounding quotes
-            # Process basic escape sequences
-            value = value.replace(r'\\', '\\').replace(r'\'', "'").replace(r'\"', '"')
+            # Process basic escape sequences - order matters!
+            value = value.replace('\\\\', '\x00')  # Temporarily store escaped backslash
+            value = value.replace("\\'", "'")      # Replace escaped single quote
+            value = value.replace('\\"', '"')      # Replace escaped double quote
+            value = value.replace('\x00', '\\')    # Restore backslash
             return Literal(value)
         elif token.type == 'NUMBER':
             # Parse as int or float

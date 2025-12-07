@@ -277,3 +277,59 @@ def test_ast_node_repr():
     assert 'age' in repr_str
     assert 'Literal' in repr_str
     assert '18' in repr_str
+
+
+def test_case_insensitive_keywords():
+    """Test that all keywords are case insensitive."""
+    # Test AND keyword
+    ast_lower = parse_query("age > 18 and status = 'active'")
+    ast_upper = parse_query("age > 18 AND status = 'active'")
+    ast_mixed = parse_query("age > 18 AnD status = 'active'")
+    assert isinstance(ast_lower, And)
+    assert isinstance(ast_upper, And)
+    assert isinstance(ast_mixed, And)
+
+    # Test OR keyword
+    ast_lower = parse_query("a = 1 or b = 2")
+    ast_upper = parse_query("a = 1 OR b = 2")
+    assert isinstance(ast_lower, Or)
+    assert isinstance(ast_upper, Or)
+
+    # Test NOT keyword
+    ast_lower = parse_query("not a = 1")
+    ast_upper = parse_query("NOT a = 1")
+    assert isinstance(ast_lower, Not)
+    assert isinstance(ast_upper, Not)
+
+    # Test IN keyword
+    ast_lower = parse_query("status in [1, 2]")
+    ast_upper = parse_query("status IN [1, 2]")
+    assert isinstance(ast_lower, In)
+    assert isinstance(ast_upper, In)
+
+    # Test TRUE, FALSE, NULL
+    ast = parse_query("active = true")
+    assert ast.right.value is True
+    ast = parse_query("active = TRUE")
+    assert ast.right.value is True
+    ast = parse_query("active = TrUe")
+    assert ast.right.value is True
+
+    ast = parse_query("disabled = false")
+    assert ast.right.value is False
+    ast = parse_query("disabled = FALSE")
+    assert ast.right.value is False
+
+    ast = parse_query("data = null")
+    assert ast.right.value is None
+    ast = parse_query("data = NULL")
+    assert ast.right.value is None
+    ast = parse_query("data = NuLl")
+    assert ast.right.value is None
+
+    # Verify keywords don't interfere with identifiers containing them
+    ast = parse_query("notifier = 'test'")
+    assert ast.left.name == 'notifier'
+
+    ast = parse_query("android = 'phone'")
+    assert ast.left.name == 'android'

@@ -13,18 +13,18 @@ QUERY_GRAMMAR = r"""
     ?start: or_expr
 
     ?or_expr: and_expr
-            | or_expr "OR" and_expr   -> or_op
+            | or_expr _OR and_expr   -> or_op
 
     ?and_expr: not_expr
-             | and_expr "AND" not_expr -> and_op
+             | and_expr _AND not_expr -> and_op
 
-    ?not_expr: "NOT" not_expr          -> not_op
+    ?not_expr: _NOT not_expr          -> not_op
              | comparison
 
     ?comparison: in_expr
                | primary COMP_OP primary -> compare
 
-    ?in_expr: primary "IN" list_literal -> in_op
+    ?in_expr: primary _IN list_literal -> in_op
             | primary
 
     ?primary: identifier
@@ -35,12 +35,18 @@ QUERY_GRAMMAR = r"""
     literal: STRING | NUMBER | TRUE | FALSE | NULL
     list_literal: "[" [literal ("," literal)*] "]"
 
-    COMP_OP: "=" | "!=" | "<=" | ">=" | "<" | ">"
-    DOTTED_NAME: /[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
+    _AND.2: /\band\b/i
+    _OR.2: /\bor\b/i
+    _NOT.2: /\bnot\b/i
+    _IN.2: /\bin\b/i
 
-    TRUE: "TRUE"
-    FALSE: "FALSE"
-    NULL: "NULL"
+    COMP_OP: "=" | "!=" | "<=" | ">=" | "<" | ">"
+
+    TRUE.2: /\btrue\b/i
+    FALSE.2: /\bfalse\b/i
+    NULL.2: /\bnull\b/i
+
+    DOTTED_NAME: /[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
 
     STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
 
@@ -54,4 +60,4 @@ QUERY_GRAMMAR = r"""
 
 def get_parser():
     """Get or create the Lark parser instance."""
-    return Lark(QUERY_GRAMMAR, parser='lalr', start='start')
+    return Lark(QUERY_GRAMMAR, parser='lalr')

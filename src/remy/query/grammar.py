@@ -37,15 +37,15 @@ QUERY_GRAMMAR = r"""
 
     COMP_OP: "=" | "!=" | "<=" | ">=" | "<" | ">"
     DOTTED_NAME: /[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
-    
+
     TRUE: "TRUE"
     FALSE: "FALSE"
     NULL: "NULL"
-    
+
     STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
-    
+
     NUMBER: SIGNED_NUMBER
-    
+
     %import common.SIGNED_NUMBER
     %import common.WS
     %ignore WS

@@ -1,113 +1,280 @@
+"""Tests for the query parser."""
+
 from pprint import pprint
+import pytest
 
-def test_query_grammar():
-    import re
-
-    from remy.grammar import expand_grammar
-    from remy.query.grammar import token_grammar
-
-    for k, r in expand_grammar(token_grammar(False)).items():
-        try:
-            re.compile(r)
-        except:
-            assert False, f"Failed to compile expression for '{k}': '{r}'"
+from remy.exceptions import RemyError
+from remy.query.parser import parse_query
+from remy.query.ast_nodes import (
+    Literal, Identifier, Compare, In, And, Or, Not
+)
 
 
-def test_query_tokenizer():
-    from remy.query.grammar import tokenize_query
-
-    queries = {
-        r'()' : [
-            ('lparen', '('),
-            ('rparen', ')'),
-        ],
-
-        r'(a)' : [
-            ('lparen', '('),
-            ('identifier', 'a'),
-            ('rparen', ')'),
-        ],
-
-        r'(a:Weasel { value: "beaver is the \"value\"" })' : [
-            ('lparen', '('),
-            ('identifier', 'a'),
-            ('colon', ':'),
-            ('identifier', 'Weasel'),
-            ('ws', ' '),
-            ('lbrace', '{'),
-            ('ws', ' '),
-            ('identifier', 'value'),
-            ('colon', ':'),
-            ('ws', ' '),
-            ('literal', r'"beaver is the \"value\""'),
-            ('ws', ' '),
-            ('rbrace', '}'),
-            ('rparen',  ')'),
-        ],
-
-        r'(a:Weasel { key_one: 2, key_two: 3.14e3 })-[]->()' : [
-            ('lparen', '('),
-            ('identifier', 'a'),
-            ('colon', ':'),
-            ('identifier', 'Weasel'),
-            ('ws', ' '),
-            ('lbrace', '{'),
-            ('ws', ' '),
-            ('identifier', 'key_one'),
-            ('colon', ':'),
-            ('ws', ' '),
-            ('literal', '2'),
-            ('comma', ','),
-            ('ws', ' '),
-            ('identifier', 'key_two'),
-            ('colon', ':'),
-            ('ws', ' '),
-            ('literal', '3.14e3'),
-            ('ws', ' '),
-            ('rbrace', '}'),
-            ('rparen', ')'),
-            ('hyphen', '-'),
-            ('lbracket', '['),
-            ('rbracket', ']'),
-            ('hyphen', '-'),
-            ('rangle', '>'),
-            ('lparen', '('),
-            ('rparen', ')')
-        ],
-    }
-
-    for query, tokenized in queries.items():
-        assert list(tokenize_query(query)) == tokenized
+def test_parse_simple_comparison():
+    """Test parsing simple comparison expressions."""
+    # Test equality
+    ast = parse_query("name = 'Alice'")
+    assert isinstance(ast, Compare)
+    assert ast.operator == '='
+    assert isinstance(ast.left, Identifier)
+    assert ast.left.name == 'name'
+    assert isinstance(ast.right, Literal)
+    assert ast.right.value == 'Alice'
+    
+    # Test inequality
+    ast = parse_query("status != 'inactive'")
+    assert isinstance(ast, Compare)
+    assert ast.operator == '!='
+    
+    # Test numeric comparisons
+    ast = parse_query("age > 18")
+    assert isinstance(ast, Compare)
+    assert ast.operator == '>'
+    assert ast.right.value == 18
+    
+    ast = parse_query("score >= 90")
+    assert isinstance(ast, Compare)
+    assert ast.operator == '>='
+    
+    ast = parse_query("count < 100")
+    assert isinstance(ast, Compare)
+    assert ast.operator == '<'
+    
+    ast = parse_query("level <= 5")
+    assert isinstance(ast, Compare)
+    assert ast.operator == '<='
 
 
-def test_payer():
-    from remy.query.payer import null, epsilon, terminal
-    from remy.query.payer import union, Union
-    from remy.query.payer import concat, Concat
+def test_parse_identifiers():
+    """Test parsing identifiers including dotted paths."""
+    ast = parse_query("name = 'test'")
+    assert ast.left.name == 'name'
+    
+    # Test dotted identifiers
+    ast = parse_query("tags.name = 'important'")
+    assert ast.left.name == 'tags.name'
+    
+    ast = parse_query("user.profile.email = 'test@example.com'")
+    assert ast.left.name == 'user.profile.email'
 
 
-    assert null() is null
-    assert epsilon() is epsilon
-    assert null.nullity() is null
-    assert epsilon.nullity() is epsilon
+def test_parse_literals():
+    """Test parsing different literal types."""
+    # String literals with single quotes
+    ast = parse_query("name = 'Alice'")
+    assert ast.right.value == 'Alice'
+    
+    # String literals with double quotes
+    ast = parse_query('name = "Bob"')
+    assert ast.right.value == 'Bob'
+    
+    # Integers
+    ast = parse_query("count = 42")
+    assert ast.right.value == 42
+    
+    # Floats
+    ast = parse_query("price = 19.99")
+    assert ast.right.value == 19.99
+    
+    # Scientific notation
+    ast = parse_query("large = 1.5e10")
+    assert ast.right.value == 1.5e10
+    
+    # Negative numbers
+    ast = parse_query("temp = -10")
+    assert ast.right.value == -10
+    
+    # Boolean literals
+    ast = parse_query("active = TRUE")
+    assert ast.right.value is True
+    
+    ast = parse_query("disabled = FALSE")
+    assert ast.right.value is False
+    
+    # NULL literal
+    ast = parse_query("data = NULL")
+    assert ast.right.value is None
 
-    assert terminal('lparen').nullity() is null
+
+def test_parse_and_expression():
+    """Test parsing AND expressions."""
+    ast = parse_query("age > 18 AND status = 'active'")
+    
+    assert isinstance(ast, And)
+    assert isinstance(ast.left, Compare)
+    assert isinstance(ast.right, Compare)
+    
+    assert ast.left.operator == '>'
+    assert ast.left.left.name == 'age'
+    assert ast.left.right.value == 18
+    
+    assert ast.right.operator == '='
+    assert ast.right.left.name == 'status'
+    assert ast.right.right.value == 'active'
 
 
-def test_query_parser():
-    from remy.query.parser import parse_query
+def test_parse_or_expression():
+    """Test parsing OR expressions."""
+    ast = parse_query("status = 'active' OR status = 'pending'")
+    
+    assert isinstance(ast, Or)
+    assert isinstance(ast.left, Compare)
+    assert isinstance(ast.right, Compare)
 
-    queries = {
-        '()' : [ ],
-        '(a)' : [ ],
-        '(a:Weasel)' : [ ],
-    }
 
-    print()
+def test_parse_not_expression():
+    """Test parsing NOT expressions."""
+    ast = parse_query("NOT active = TRUE")
+    
+    assert isinstance(ast, Not)
+    assert isinstance(ast.operand, Compare)
+    assert ast.operand.left.name == 'active'
 
-    for query, parsed in queries.items():
-        print(query)
-        print()
-        pprint(parse_query(query))
-        print()
-        # assert parse_query(query) == parsed
+
+def test_parse_in_expression():
+    """Test parsing IN expressions."""
+    ast = parse_query("status IN ['active', 'pending', 'review']")
+    
+    assert isinstance(ast, In)
+    assert isinstance(ast.left, Identifier)
+    assert ast.left.name == 'status'
+    assert len(ast.values) == 3
+    assert all(isinstance(v, Literal) for v in ast.values)
+    assert ast.values[0].value == 'active'
+    assert ast.values[1].value == 'pending'
+    assert ast.values[2].value == 'review'
+    
+    # Test with numbers
+    ast = parse_query("id IN [1, 2, 3]")
+    assert len(ast.values) == 3
+    assert ast.values[0].value == 1
+    
+    # Test empty list
+    ast = parse_query("id IN []")
+    assert len(ast.values) == 0
+
+
+def test_parse_parentheses():
+    """Test parsing expressions with parentheses for grouping."""
+    ast = parse_query("(age > 18 AND status = 'active') OR priority = 'high'")
+    
+    assert isinstance(ast, Or)
+    assert isinstance(ast.left, And)
+    assert isinstance(ast.right, Compare)
+
+
+def test_operator_precedence():
+    """Test that operator precedence is correct: NOT > AND > OR."""
+    # NOT has highest precedence
+    ast = parse_query("NOT a = 1 AND b = 2")
+    assert isinstance(ast, And)
+    assert isinstance(ast.left, Not)
+    assert isinstance(ast.right, Compare)
+    
+    # AND has higher precedence than OR
+    ast = parse_query("a = 1 OR b = 2 AND c = 3")
+    assert isinstance(ast, Or)
+    assert isinstance(ast.left, Compare)
+    assert isinstance(ast.right, And)
+
+
+def test_complex_expressions():
+    """Test parsing complex nested expressions."""
+    query = "(status = 'active' OR status = 'pending') AND (age > 18 OR verified = TRUE)"
+    ast = parse_query(query)
+    
+    assert isinstance(ast, And)
+    assert isinstance(ast.left, Or)
+    assert isinstance(ast.right, Or)
+    
+    # More complex with NOT
+    query = "NOT (status = 'inactive' OR banned = TRUE) AND score >= 50"
+    ast = parse_query(query)
+    
+    assert isinstance(ast, And)
+    assert isinstance(ast.left, Not)
+    assert isinstance(ast.left.operand, Or)
+    assert isinstance(ast.right, Compare)
+
+
+def test_parse_errors():
+    """Test that malformed queries raise RemyError."""
+    # Empty query
+    with pytest.raises(RemyError, match="empty"):
+        parse_query("")
+    
+    with pytest.raises(RemyError, match="empty"):
+        parse_query("   ")
+    
+    # Invalid syntax
+    with pytest.raises(RemyError, match="Failed to parse"):
+        parse_query("name =")
+    
+    with pytest.raises(RemyError, match="Failed to parse"):
+        parse_query("= 'value'")
+    
+    with pytest.raises(RemyError, match="Failed to parse"):
+        parse_query("AND OR")
+    
+    # Unmatched parentheses
+    with pytest.raises(RemyError, match="Failed to parse"):
+        parse_query("(age > 18")
+    
+    with pytest.raises(RemyError, match="Failed to parse"):
+        parse_query("age > 18)")
+
+
+def test_escaped_strings():
+    """Test parsing strings with escape sequences."""
+    # Test escaped quotes in single-quoted string
+    ast = parse_query(r"text = 'it\'s working'")
+    assert ast.right.value == "it's working"
+    
+    # Test escaped quotes in double-quoted string
+    ast = parse_query(r'text = "say \"hello\""')
+    assert ast.right.value == 'say "hello"'
+    
+    # Test escaped backslash
+    ast = parse_query(r"path = 'c:\\users\\test'")
+    assert ast.right.value == r'c:\users\test'
+
+
+def test_whitespace_handling():
+    """Test that whitespace is properly ignored."""
+    queries = [
+        "age=18",
+        "age = 18",
+        "age  =  18",
+        " age = 18 ",
+        "age\n=\n18",
+    ]
+    
+    for query in queries:
+        ast = parse_query(query)
+        assert isinstance(ast, Compare)
+        assert ast.left.name == 'age'
+        assert ast.right.value == 18
+
+
+def test_ast_node_equality():
+    """Test that AST nodes can be compared for equality."""
+    ast1 = parse_query("name = 'Alice'")
+    ast2 = parse_query("name = 'Alice'")
+    
+    assert ast1 == ast2
+    
+    ast3 = parse_query("name = 'Bob'")
+    assert ast1 != ast3
+
+
+def test_ast_node_repr():
+    """Test that AST nodes have useful string representations."""
+    ast = parse_query("age > 18")
+    
+    repr_str = repr(ast)
+    assert 'Compare' in repr_str
+    assert '>' in repr_str
+    assert 'Identifier' in repr_str
+    assert 'age' in repr_str
+    assert 'Literal' in repr_str
+    assert '18' in repr_str

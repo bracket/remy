@@ -17,6 +17,7 @@ def main():
         license      = meta['license'],
 
         install_requires = [
+            'lark',
         ],
 
         extras_require = {

@@ -5,7 +5,7 @@ This module provides the parse_query function that converts SQL-like WHERE claus
 into an abstract syntax tree (AST) for later evaluation.
 """
 
-from lark import Lark, Transformer, exceptions as lark_exceptions
+from lark import Transformer, exceptions as lark_exceptions
 
 from remy.exceptions import RemyError
 from remy.query.grammar import get_parser
@@ -17,45 +17,45 @@ from remy.query.ast_nodes import (
 class QueryTransformer(Transformer):
     """
     Transforms Lark parse tree into AST nodes.
-    
+
     Each method corresponds to a rule in the grammar and transforms
     the matched tree into the appropriate AST node.
     """
-    
+
     def or_op(self, args):
         """Transform OR expression."""
         left, right = args
         return Or(left, right)
-    
+
     def and_op(self, args):
         """Transform AND expression."""
         left, right = args
         return And(left, right)
-    
+
     def not_op(self, args):
         """Transform NOT expression."""
         operand = args[0]
         return Not(operand)
-    
+
     def compare(self, args):
         """Transform comparison expression."""
         left, op_token, right = args
         return Compare(str(op_token), left, right)
-    
+
     def in_op(self, args):
         """Transform IN expression."""
         left, values = args
         return In(left, values)
-    
+
     def identifier(self, args):
         """Transform identifier."""
         name = str(args[0])
         return Identifier(name)
-    
+
     def literal(self, args):
         """Transform literal value."""
         token = args[0]
-        
+
         if token.type == 'STRING':
             # Remove quotes and process escape sequences
             value = str(token)[1:-1]  # Remove surrounding quotes
@@ -80,7 +80,7 @@ class QueryTransformer(Transformer):
             return Literal(None)
         else:
             raise RemyError(f"Unknown literal type: {token}")
-    
+
     def list_literal(self, args):
         """Transform list literal."""
         # Filter out None values (from optional empty lists)
@@ -90,27 +90,27 @@ class QueryTransformer(Transformer):
 def parse_query(query):
     """
     Parse a WHERE clause query string into an AST.
-    
+
     Args:
         query: A string containing a SQL-like WHERE clause
-        
+
     Returns:
         An AST node representing the parsed query
-        
+
     Raises:
         RemyError: If the query is malformed or cannot be parsed
-        
+
     Examples:
         >>> parse_query("status = 'active'")
         Compare('=', Identifier('status'), Literal('active'))
-        
+
         >>> parse_query("age > 18 AND name = 'Alice'")
-        And(Compare('>', Identifier('age'), Literal(18)), 
+        And(Compare('>', Identifier('age'), Literal(18)),
             Compare('=', Identifier('name'), Literal('Alice')))
     """
     if not query or not query.strip():
         raise RemyError("Query cannot be empty")
-    
+
     try:
         parser = get_parser()
         tree = parser.parse(query)

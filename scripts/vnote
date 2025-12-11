@@ -1,0 +1,58 @@
+#!/usr/bin/env python
+
+import os
+import click
+
+from datetime import datetime, UTC
+
+
+@click.command
+@click.option('-c', '--cache', help='Path to notecard cache', required=True)
+@click.argument('label', required=False)
+def main(cache, label):
+    from remy.url import URL
+    from remy.notecard_cache import NotecardCache
+
+    cache_url = URL(cache)
+
+    if not cache_url.scheme:
+        cache_url = cache_url._replace(scheme='file')
+
+    if cache_url.scheme != 'file':
+        raise RuntimeError("Unable to open local cache for editing. cache: '{}'".format(cache_url.geturl()))
+
+    if label:
+        cache = NotecardCache(cache_url)
+
+        card = cache.find_card_by_label(label)
+
+        if not card:
+            raise RuntimeError("Unable to find card for label in cache. cache: '{}' label: '{}'".format(cache_url.geturl(), label))
+
+
+        source_url = cache.find_card_by_label(label).source_url
+        source_path = cache.find_card_by_label(label).source_url.path
+        line_no = int(source_url.fragment) + 1
+    else:
+        now = datetime.now(UTC)
+        source_path = cache_url.path / '{now.year:04}/{now.month:02}/{now.day:02}.ntc'.format(now=now)
+        line_no = 0
+
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        'vim',
+        str(source_path),
+    ]
+
+    if line_no:
+        command.append("+{}".format(line_no))
+        command.append('+normal ztzo')
+    elif source_path.exists():
+        command.append('+normal G')
+
+    os.execvp(command[0], command)
+
+
+if __name__ == '__main__':
+    main(auto_envvar_prefix='REMY')

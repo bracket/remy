@@ -1,0 +1,15 @@
+#!/usr/bin/env python
+
+def main():
+    from remy.util import generate_unique_label
+    from datetime import datetime, UTC
+
+    print('NOTECARD {}'.format(generate_unique_label()))
+
+    now = datetime.now(UTC)
+    now = now.strftime('%Y-%m-%d %H:%M:%S+0000')
+
+    print(':CREATED: {}'.format(now))
+
+if __name__ == '__main__':
+    main()

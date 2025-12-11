@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+
+def main():
+    from datetime import datetime, UTC
+
+    now = datetime.now(UTC)
+    now = now.strftime('%Y-%m-%d %H:%M:%S+0000')
+
+    print(':SPOTTED: {}'.format(now))
+
+if __name__ == '__main__':
+    main()

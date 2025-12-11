@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "remy"
+version = "0.1.0"
+description = "Notecards"
+license = {text = "MIT"}
+authors = [
+    {name = "Bracket", email = "mcbracket@gmail.com"}
+]
+requires-python = ">=3.12"
+dependencies = [
+    "lark",
+    "sortedcontainers",
+    "click",
+]
+
+[project.optional-dependencies]
+dev = [
+    "flake8",
+    "pytest",
+    "sphinx",
+]
+
+[project.scripts]
+remy = "remy.cli.__main__:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

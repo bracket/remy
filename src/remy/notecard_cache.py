@@ -106,7 +106,7 @@ class NotecardCache(object):
     def references(self):
         from remy.ast.parse import parse_content
         from remy.ast import Reference
-        from groupby import set_groupby
+        from .groupby import set_groupby
 
         if self.__references is not None:
             return self.__references

@@ -52,11 +52,14 @@ def test_query_with_expression():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', 'dummy expression'])
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'"])
 
-    # Should succeed and return all notecards (filtering not implemented yet)
+    # Should succeed and filter to only inbox notecards
     assert result.exit_code == 0
-    assert 'NOTECARD 1 weasel' in result.output
+    assert 'NOTECARD task1 inbox-task' in result.output
+    assert 'NOTECARD task2 review-task' in result.output
+    # Should not include non-inbox cards
+    assert 'NOTECARD 1 weasel' not in result.output
 
 
 def test_query_with_where_flag():
@@ -66,9 +69,12 @@ def test_query_with_where_flag():
     runner = CliRunner()
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--where', "tag = 'inbox'"])
 
-    # Should succeed and return all notecards (filtering not implemented yet)
+    # Should succeed and filter to only inbox notecards
     assert result.exit_code == 0
-    assert 'NOTECARD 1 weasel' in result.output
+    assert 'NOTECARD task1 inbox-task' in result.output
+    assert 'NOTECARD task2 review-task' in result.output
+    # Should not include non-inbox cards
+    assert 'NOTECARD 1 weasel' not in result.output
 
 
 def test_query_no_arguments_error():
@@ -170,3 +176,114 @@ def test_cache_option_overrides_environment_variable():
 
     assert result.exit_code == 0
     assert 'NOTECARD 1 weasel' in result.output
+
+
+def test_query_simple_equality():
+    """Test simple equality query filtering."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'"])
+
+    assert result.exit_code == 0
+    # Should include inbox tasks
+    assert 'NOTECARD task1 inbox-task' in result.output
+    assert 'NOTECARD task2 review-task' in result.output
+    # Should not include other tasks
+    assert 'NOTECARD task3 done-task' not in result.output
+    assert 'NOTECARD task4 urgent' not in result.output
+    assert 'NOTECARD task5 archive' not in result.output
+
+
+def test_query_and_operation():
+    """Test AND operation in queries."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox' AND priority = 3"])
+
+    assert result.exit_code == 0
+    # Should include only inbox task with priority 3
+    assert 'NOTECARD task1 inbox-task' in result.output
+    # Should not include other inbox tasks with different priority
+    assert 'NOTECARD task2 review-task' not in result.output
+    # Should not include other tasks
+    assert 'NOTECARD task4 urgent' not in result.output
+
+
+def test_query_or_operation():
+    """Test OR operation in queries."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox' OR tag = 'urgent'"])
+
+    assert result.exit_code == 0
+    # Should include inbox tasks
+    assert 'NOTECARD task1 inbox-task' in result.output
+    assert 'NOTECARD task2 review-task' in result.output
+    # Should include urgent task
+    assert 'NOTECARD task4 urgent' in result.output
+    # Should not include other tasks
+    assert 'NOTECARD task3 done-task' not in result.output
+    assert 'NOTECARD task5 archive' not in result.output
+
+
+def test_query_parse_error():
+    """Test that parse errors are handled gracefully."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox' AND"])
+
+    # Should fail with non-zero exit code
+    assert result.exit_code != 0
+    # Should display error message
+    assert 'Error:' in result.output or 'error' in result.output.lower()
+
+
+def test_query_unknown_field():
+    """Test that unknown fields return empty results."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "unknown_field = 'value'"])
+
+    # Should succeed but return no results
+    assert result.exit_code == 0
+    # Output should be empty (no notecards)
+    assert 'NOTECARD' not in result.output
+
+
+def test_query_all_flag_still_works():
+    """Test that --all flag returns all notecards without filtering."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all'])
+
+    assert result.exit_code == 0
+    # Should include all notecards
+    assert 'NOTECARD 1 weasel' in result.output
+    assert 'NOTECARD 2 beaver' in result.output
+    assert 'NOTECARD task1 inbox-task' in result.output
+    assert 'NOTECARD task2 review-task' in result.output
+    assert 'NOTECARD task3 done-task' in result.output
+
+
+def test_query_complex_expression():
+    """Test complex expression with multiple fields."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', 
+                                   "status = 'active' AND priority = 3"])
+
+    assert result.exit_code == 0
+    # Should include active tasks with priority 3
+    assert 'NOTECARD task1 inbox-task' in result.output
+    assert 'NOTECARD task4 urgent' in result.output
+    # Should not include tasks with different status or priority
+    assert 'NOTECARD task2 review-task' not in result.output
+    assert 'NOTECARD task3 done-task' not in result.output
+    assert 'NOTECARD task5 archive' not in result.output

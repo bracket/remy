@@ -18,7 +18,7 @@ def format_notecards_raw(cards):
 
 
 @click.group()
-@click.option('--cache', help='Location of Remy notecard cache.', required=True)
+@click.option('--cache', envvar='REMY_CACHE', help='Location of Remy notecard cache.', required=True)
 @click.pass_context
 def main(ctx, cache):
     """Remy notecard management system."""

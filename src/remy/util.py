@@ -5,7 +5,7 @@ def generate_unique_label(seed=''):
     import time
 
     m = hashlib.sha256(seed.encode('utf-8'))
-    m.update(str(datetime.datetime.utcnow()).encode('utf-8'))
+    m.update(str(datetime.datetime.now(datetime.timezone.utc)).encode('utf-8'))
     m.update(time.perf_counter_ns().to_bytes(8, sys.byteorder))
 
     return m.hexdigest()

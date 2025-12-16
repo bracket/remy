@@ -4,6 +4,8 @@ elseif exists("b:current_syntax")
     finish
 endif
 
+runtime! syntax/markdown.vim
+
 setlocal foldmethod=syntax
 
 syntax case match

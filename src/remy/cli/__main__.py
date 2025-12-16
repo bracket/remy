@@ -79,15 +79,9 @@ def query(ctx, query_expr, where_clause, show_all, output_format):
         # Just show all notecards for now
         pass
 
-    # Get all notecards sorted by primary label
-    cards = [card for card in cache.cards_by_label.values()]
-    # Deduplicate by primary label (multiple labels can point to same card)
-    seen_primary = set()
-    unique_cards = []
-    for card in cards:
-        if card.primary_label not in seen_primary:
-            seen_primary.add(card.primary_label)
-            unique_cards.append(card)
+    # Get all unique notecards (deduplicate by primary label)
+    # cards_by_label.values() contains duplicate references for multi-label cards
+    unique_cards = list({card.primary_label: card for card in cache.cards_by_label.values()}.values())
 
     # Sort by primary label for consistent output
     unique_cards.sort(key=lambda c: c.primary_label)

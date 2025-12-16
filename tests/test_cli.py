@@ -1,0 +1,145 @@
+from pathlib import Path
+from click.testing import CliRunner
+
+FILE = Path(__file__).absolute()
+HERE = FILE.parent
+DATA = HERE / 'data'
+
+
+def test_main_help():
+    """Test that main --help shows the query subcommand."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--help'])
+
+    assert result.exit_code == 0
+    assert 'query' in result.output
+    assert 'Query and filter notecards' in result.output
+
+
+def test_query_help():
+    """Test that query --help shows all expected options."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--help'])
+
+    assert result.exit_code == 0
+    assert '--where' in result.output
+    assert '--all' in result.output
+    assert '--format' in result.output
+    assert 'raw' in result.output
+    assert 'json' in result.output
+
+
+def test_query_all():
+    """Test query --all returns all notecards."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all'])
+
+    assert result.exit_code == 0
+    # Check for notecard identifiers
+    assert 'NOTECARD 1 weasel' in result.output
+    assert 'NOTECARD 2 beaver' in result.output
+    assert 'NOTECARD 1fe9b4c66472604a3363a11bceb3350dd24d67a4dee4878f304ccbe6542b3ba5' in result.output
+
+
+def test_query_with_expression():
+    """Test query with a positional expression argument."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', 'dummy expression'])
+
+    # Should succeed and return all notecards (filtering not implemented yet)
+    assert result.exit_code == 0
+    assert 'NOTECARD 1 weasel' in result.output
+
+
+def test_query_with_where_flag():
+    """Test query with --where flag."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--where', "tag = 'inbox'"])
+
+    # Should succeed and return all notecards (filtering not implemented yet)
+    assert result.exit_code == 0
+    assert 'NOTECARD 1 weasel' in result.output
+
+
+def test_query_no_arguments_error():
+    """Test that query without arguments shows an error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query'])
+
+    assert result.exit_code != 0
+    assert 'Must provide a query expression' in result.output
+
+
+def test_query_format_raw():
+    """Test query with --format=raw (default)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=raw'])
+
+    assert result.exit_code == 0
+    # Output should be in raw notecard format
+    assert 'NOTECARD 1 weasel' in result.output
+    assert 'weasel\n' in result.output
+
+
+def test_query_format_json_not_implemented():
+    """Test that --format=json raises NotImplementedError."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=json'])
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, NotImplementedError)
+    assert 'JSON output format is not yet implemented' in str(result.exception)
+
+
+def test_query_output_reparseable():
+    """Test that query output can be reparsed by Remy."""
+    from remy.cli.__main__ import main
+    from remy.notecard import from_file
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all'])
+
+    assert result.exit_code == 0
+
+    # Write output to a temporary file and try to reparse it
+    with runner.isolated_filesystem():
+        output_file = Path('output.ntc')
+        output_file.write_text(result.output)
+
+        # Try to parse the output file
+        cards = list(from_file(output_file))
+
+        # Should have parsed some notecards
+        assert len(cards) > 0
+
+        # Check that we got expected notecards
+        primary_labels = [card.primary_label for card in cards]
+        assert '1' in primary_labels
+        assert '2' in primary_labels
+
+
+def test_cache_option_required():
+    """Test that --cache option is required."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['query', '--all'])
+
+    assert result.exit_code != 0
+    assert 'Missing option' in result.output or '--cache' in result.output

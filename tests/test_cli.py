@@ -276,7 +276,7 @@ def test_query_complex_expression():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', 
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query',
                                    "status = 'active' AND priority = 3"])
 
     assert result.exit_code == 0

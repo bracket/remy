@@ -2,7 +2,7 @@ from .notecard_cache import NotecardCache
 from sortedcontainers import SortedSet
 from .exceptions import RemyError
 
-from groupby import list_groupby
+from .groupby import list_groupby
 
 import sys
 

@@ -136,11 +136,7 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
 
     # Use NotecardIndex.find() to get matching labels
     # find(low=value, high=value) returns iterator of (value, label) tuples
-    result_labels = set()
-    for _, label in index.find(low=value, high=value):
-        result_labels.add(label)
-
-    return result_labels
+    return {label for _, label in index.find(low=value, high=value)}
 
 
 def _evaluate_and(ast: And, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:

@@ -143,3 +143,30 @@ def test_cache_option_required():
 
     assert result.exit_code != 0
     assert 'Missing option' in result.output or '--cache' in result.output
+
+
+def test_cache_from_environment_variable():
+    """Test that REMY_CACHE environment variable works."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Set REMY_CACHE environment variable
+    result = runner.invoke(main, ['query', '--all'], 
+                          env={'REMY_CACHE': str(DATA / 'test_notes')})
+
+    assert result.exit_code == 0
+    assert 'NOTECARD 1 weasel' in result.output
+    assert 'NOTECARD 2 beaver' in result.output
+
+
+def test_cache_option_overrides_environment_variable():
+    """Test that --cache option overrides REMY_CACHE environment variable."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Set REMY_CACHE to a different path, but override with --cache
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all'],
+                          env={'REMY_CACHE': '/nonexistent/path'})
+
+    assert result.exit_code == 0
+    assert 'NOTECARD 1 weasel' in result.output

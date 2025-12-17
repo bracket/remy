@@ -5,6 +5,7 @@ from .exceptions import RemyError
 from groupby import list_groupby
 
 import sys
+from typing import Any, Generator, Optional, Tuple
 
 null = object()
 
@@ -59,7 +60,38 @@ class NotecardIndex(object):
         return self.__inverse
 
 
-    def find(self, low = null, high=null, snap=None):
+    def find(
+        self, 
+        low: Any = null, 
+        high: Any = null, 
+        snap: Optional[str] = None
+    ) -> Generator[Tuple[Any, str], None, None]:
+        """
+        Find notecards with field values in the specified range.
+        
+        Yields tuples of (field_value, notecard_label) for all notecards whose
+        field values fall within the range [low, high], inclusive. If only `low`
+        is specified, searches for an exact match (high defaults to low).
+        
+        Args:
+            low: The lower bound of the search range. If null (default), uses the
+                 minimum possible value. The type must be compatible with the
+                 field_parser used to index this field.
+            high: The upper bound of the search range. If null (default) and low
+                  is specified, high defaults to low (exact match search). If both
+                  are null, searches the entire index.
+            snap: Controls boundary behavior when the exact bound value is not in
+                  the index:
+                  - None (default): No adjustment; starts from the first value >= low
+                  - 'soft': Includes one value before low if it exists, extending the
+                    range downward by one entry
+                  - 'hard': Rounds down to the nearest value that has multiple entries
+                    with the same key (all entries sharing the low key value are
+                    included)
+        
+        Yields:
+            Tuples of (field_value, notecard_label) for each match in the range
+        """
         if low is not null:
             low_key = (id(type(low)), low)
         else:

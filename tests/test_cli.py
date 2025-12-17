@@ -141,11 +141,12 @@ def test_query_output_reparseable():
 
 
 def test_cache_option_required():
-    """Test that --cache option is required."""
+    """Test that --cache option is required when REMY_CACHE is not set."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ['query', '--all'])
+    # Explicitly unset REMY_CACHE environment variable (in case it's set in user's shell)
+    result = runner.invoke(main, ['query', '--all'], env={'REMY_CACHE': ''})
 
     assert result.exit_code != 0
     assert 'Missing option' in result.output or '--cache' in result.output

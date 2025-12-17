@@ -1,4 +1,5 @@
 import click
+import sys
 
 notecard_cache = None
 
@@ -15,6 +16,50 @@ def format_notecard_raw(card):
 def format_notecards_raw(cards):
     """Format multiple notecards in raw format."""
     return "".join(format_notecard_raw(card) for card in cards)
+
+
+def execute_query_filter(cache, query_string):
+    """
+    Execute a query filter and return matching notecards.
+    
+    Args:
+        cache: NotecardCache instance
+        query_string: Query expression string to parse and evaluate
+    
+    Returns:
+        List of unique notecards matching the query
+    
+    Raises:
+        RemyError: If query parsing or evaluation fails
+    """
+    from remy.query.parser import parse_query
+    from remy.query.eval import evaluate_query
+    from remy.query.util import extract_field_names
+    
+    # Parse the query into an AST
+    ast = parse_query(query_string)
+    
+    # Extract field names from the AST
+    field_names = extract_field_names(ast)
+    
+    # Build field indices dictionary
+    field_indices = cache.field_indices(field_names)
+    
+    # Evaluate the query to get matching primary labels
+    matching_labels = evaluate_query(ast, field_indices)
+    
+    # Look up notecards for matching labels
+    unique_cards = []
+    for label in matching_labels:
+        card = cache.cards_by_label.get(label)
+        if card is not None:
+            # Only add each card once (by primary label)
+            unique_cards.append(card)
+    
+    # Deduplicate by primary label (in case we have multi-label cards)
+    unique_cards = list({card.primary_label: card for card in unique_cards}.values())
+    
+    return unique_cards
 
 
 @click.group()
@@ -72,16 +117,27 @@ def query(ctx, query_expr, where_clause, show_all, output_format):
     # Get the query expression (prefer positional over --where)
     final_query = query_expr or where_clause
 
-    # For now, ignore the query and return all notecards
-    # (filtering will be implemented in a future issue)
-    if final_query and not show_all:
-        # Query expression provided but filtering not yet implemented
-        # Just show all notecards for now
-        pass
-
-    # Get all unique notecards (deduplicate by primary label)
-    # cards_by_label.values() contains duplicate references for multi-label cards
-    unique_cards = list({card.primary_label: card for card in cache.cards_by_label.values()}.values())
+    # Determine which notecards to return
+    if show_all:
+        # Return all notecards when --all flag is used
+        unique_cards = list({card.primary_label: card for card in cache.cards_by_label.values()}.values())
+    elif final_query:
+        # Parse and evaluate the query expression
+        from remy.exceptions import RemyError
+        
+        try:
+            unique_cards = execute_query_filter(cache, final_query)
+        except RemyError as e:
+            # Parse or evaluation error - print message and exit
+            click.echo(f"Error: {str(e)}", err=True)
+            sys.exit(1)
+        except Exception as e:
+            # Unexpected error - print message and exit
+            click.echo(f"Unexpected error: {str(e)}", err=True)
+            sys.exit(1)
+    else:
+        # This shouldn't happen due to earlier validation, but handle it anyway
+        unique_cards = []
 
     # Sort by primary label for consistent output
     unique_cards.sort(key=lambda c: c.primary_label)

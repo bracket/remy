@@ -54,6 +54,27 @@ class NotecardCache(object):
         return index
 
 
+    def field_indices(self, field_names):
+        """
+        Get field indices for multiple field names.
+        
+        Args:
+            field_names: Iterable of field names
+        
+        Returns:
+            Dictionary mapping uppercase field names to NotecardIndex objects.
+            Fields that don't exist in the config are silently skipped.
+        """
+        indices = {}
+        for field_name in field_names:
+            try:
+                indices[field_name.upper()] = self.field_index(field_name)
+            except (KeyError, AttributeError):
+                # Field doesn't exist in config - skip it
+                pass
+        return indices
+
+
     @property
     def cards_by_label(self):
         from .notecard import from_url
@@ -106,7 +127,7 @@ class NotecardCache(object):
     def references(self):
         from remy.ast.parse import parse_content
         from remy.ast import Reference
-        from groupby import set_groupby
+        from .groupby import set_groupby
 
         if self.__references is not None:
             return self.__references

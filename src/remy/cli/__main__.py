@@ -18,38 +18,48 @@ def format_notecards_raw(cards):
     return "".join(format_notecard_raw(card) for card in cards)
 
 
-def extract_field_names(ast):
+def execute_query_filter(cache, query_string):
     """
-    Extract all field names (identifiers) from a query AST.
+    Execute a query filter and return matching notecards.
     
     Args:
-        ast: The query AST node
+        cache: NotecardCache instance
+        query_string: Query expression string to parse and evaluate
     
     Returns:
-        Set of uppercase field names referenced in the query
+        List of unique notecards matching the query
+    
+    Raises:
+        RemyError: If query parsing or evaluation fails
     """
-    from remy.query.ast_nodes import Identifier, Compare, And, Or, Not, In
+    from remy.query.parser import parse_query
+    from remy.query.eval import evaluate_query
+    from remy.query.util import extract_field_names
     
-    field_names = set()
+    # Parse the query into an AST
+    ast = parse_query(query_string)
     
-    def visit(node):
-        if isinstance(node, Identifier):
-            field_names.add(node.name.upper())
-        elif isinstance(node, Compare):
-            visit(node.left)
-            visit(node.right)
-        elif isinstance(node, And) or isinstance(node, Or):
-            visit(node.left)
-            visit(node.right)
-        elif isinstance(node, Not):
-            visit(node.operand)
-        elif isinstance(node, In):
-            visit(node.left)
-            for value in node.values:
-                visit(value)
+    # Extract field names from the AST
+    field_names = extract_field_names(ast)
     
-    visit(ast)
-    return field_names
+    # Build field indices dictionary
+    field_indices = cache.field_indices(field_names)
+    
+    # Evaluate the query to get matching primary labels
+    matching_labels = evaluate_query(ast, field_indices)
+    
+    # Look up notecards for matching labels
+    unique_cards = []
+    for label in matching_labels:
+        card = cache.cards_by_label.get(label)
+        if card is not None:
+            # Only add each card once (by primary label)
+            unique_cards.append(card)
+    
+    # Deduplicate by primary label (in case we have multi-label cards)
+    unique_cards = list({card.primary_label: card for card in unique_cards}.values())
+    
+    return unique_cards
 
 
 @click.group()
@@ -113,40 +123,10 @@ def query(ctx, query_expr, where_clause, show_all, output_format):
         unique_cards = list({card.primary_label: card for card in cache.cards_by_label.values()}.values())
     elif final_query:
         # Parse and evaluate the query expression
-        from remy.query.parser import parse_query
-        from remy.query.eval import evaluate_query
         from remy.exceptions import RemyError
         
         try:
-            # Parse the query into an AST
-            ast = parse_query(final_query)
-            
-            # Extract field names from the AST
-            field_names = extract_field_names(ast)
-            
-            # Build field indices dictionary
-            field_indices = {}
-            for field_name in field_names:
-                try:
-                    field_indices[field_name] = cache.field_index(field_name)
-                except (KeyError, AttributeError):
-                    # Field doesn't exist in config - evaluator will return empty set
-                    pass
-            
-            # Evaluate the query to get matching primary labels
-            matching_labels = evaluate_query(ast, field_indices)
-            
-            # Look up notecards for matching labels
-            unique_cards = []
-            for label in matching_labels:
-                card = cache.cards_by_label.get(label)
-                if card is not None:
-                    # Only add each card once (by primary label)
-                    unique_cards.append(card)
-            
-            # Deduplicate by primary label (in case we have multi-label cards)
-            unique_cards = list({card.primary_label: card for card in unique_cards}.values())
-            
+            unique_cards = execute_query_filter(cache, final_query)
         except RemyError as e:
             # Parse or evaluation error - print message and exit
             click.echo(f"Error: {str(e)}", err=True)

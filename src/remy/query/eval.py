@@ -153,7 +153,9 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     
     elif ast.operator == '<':
         # Strictly less than: all values up to (but not including) value
-        # Get all values up to value, then filter out exact matches
+        # Note: NotecardIndex.find() doesn't support exclusive boundaries,
+        # so we retrieve values <= value and filter out the boundary value.
+        # This is efficient because we only filter the boundary value(s).
         result = set()
         for field_value, label in index.find(low=null, high=value):
             if field_value < value:
@@ -166,6 +168,9 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     
     elif ast.operator == '>':
         # Strictly greater than: all values from value onwards, excluding value
+        # Note: NotecardIndex.find() doesn't support exclusive boundaries,
+        # so we retrieve values >= value and filter out the boundary value.
+        # This is efficient because we only filter the boundary value(s).
         result = set()
         for field_value, label in index.find(low=value, high=null):
             if field_value > value:

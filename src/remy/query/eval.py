@@ -20,6 +20,7 @@ Example usage:
 """
 
 from remy.exceptions import RemyError
+from remy.notecard_index import null
 from remy.query.ast_nodes import (
     ASTNode, Literal, Identifier, Compare, In, And, Or, Not,
     DateTimeLiteral, DateLiteral
@@ -49,11 +50,15 @@ def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> S
 
     Supported operations:
         - Compare with '=' operator: field = value
+        - Compare with '<' operator: field < value
+        - Compare with '<=' operator: field <= value
+        - Compare with '>' operator: field > value
+        - Compare with '>=' operator: field >= value
         - And: intersection of two sub-queries
         - Or: union of two sub-queries
 
     Not yet supported (will raise RemyError):
-        - Compare with !=, <, <=, >, >= operators
+        - Compare with != operator
         - Not: logical negation
         - In: membership testing
 
@@ -102,14 +107,15 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
         Set of primary labels matching the comparison
 
     Raises:
-        RemyError: If operands have wrong types
+        RemyError: If operator is not supported or operands have wrong types
     """
-    # Check for unsupported operators first
-    if ast.operator == '!=':
+    # Validate supported operators
+    if ast.operator not in ('=', '<', '<=', '>', '>='):
         raise RemyError(
-            f"Comparison operator '!=' is not yet supported."
+            f"Comparison operator '{ast.operator}' is not yet supported. "
+            f"Currently supported: =, <, <=, >, >="
         )
-    
+
     # Left side must be an Identifier (field name)
     if not isinstance(ast.left, Identifier):
         raise RemyError(
@@ -125,8 +131,6 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
         )
 
     field_name = ast.left.name.upper()
-    
-    # Extract the value from the literal
     value = ast.right.value
 
     # If the field doesn't exist in indices, return empty set
@@ -136,36 +140,50 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
 
     index = field_indices[field_name]
 
-    # Handle different comparison operators
+    # Use NotecardIndex.find() to get matching labels
+    # The approach differs based on the operator:
+    # - '=': find(low=value, high=value) - exact match
+    # - '<': find(low=null, high=value) excluding value itself
+    # - '<=': find(low=null, high=value) including value
+    # - '>': find(low=value, high=null) excluding value itself
+    # - '>=': find(low=value, high=null) including value
+    
     if ast.operator == '=':
-        # Exact match: find(low=value, high=value)
+        # Exact match: low=value, high=value
         return {label for _, label in index.find(low=value, high=value)}
+    
     elif ast.operator == '<':
-        # Less than: find all values up to (but not including) value
-        # Use find() to get all values <= value, then filter out exact matches
+        # Strictly less than: all values up to (but not including) value
+        # Note: NotecardIndex.find() doesn't support exclusive boundaries,
+        # so we retrieve values <= value and filter out the boundary value.
+        # This is efficient because we only filter the boundary value(s).
         result = set()
-        for field_value, label in index.find(high=value):
+        for field_value, label in index.find(low=null, high=value):
             if field_value < value:
                 result.add(label)
         return result
+    
     elif ast.operator == '<=':
-        # Less than or equal: find all values up to and including value
-        return {label for _, label in index.find(high=value)}
+        # Less than or equal: all values up to and including value
+        return {label for _, label in index.find(low=null, high=value)}
+    
     elif ast.operator == '>':
-        # Greater than: find all values from (but not including) value
-        # Use find() to get all values >= value, then filter out exact matches
+        # Strictly greater than: all values from value onwards, excluding value
+        # Note: NotecardIndex.find() doesn't support exclusive boundaries,
+        # so we retrieve values >= value and filter out the boundary value.
+        # This is efficient because we only filter the boundary value(s).
         result = set()
-        for field_value, label in index.find(low=value):
+        for field_value, label in index.find(low=value, high=null):
             if field_value > value:
                 result.add(label)
         return result
+    
     elif ast.operator == '>=':
-        # Greater than or equal: find all values from value onwards
-        return {label for _, label in index.find(low=value)}
-    else:
-        raise RemyError(
-            f"Unsupported comparison operator: '{ast.operator}'"
-        )
+        # Greater than or equal: all values from value onwards
+        return {label for _, label in index.find(low=value, high=null)}
+    
+    # This should never be reached due to the operator validation above
+    raise RemyError(f"Unexpected operator: {ast.operator}")
 
 
 def _evaluate_and(ast: And, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:

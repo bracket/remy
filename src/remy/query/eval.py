@@ -127,10 +127,7 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     field_name = ast.left.name.upper()
     
     # Extract the value from the literal
-    if isinstance(ast.right, (DateTimeLiteral, DateLiteral)):
-        value = ast.right.value
-    else:
-        value = ast.right.value
+    value = ast.right.value
 
     # If the field doesn't exist in indices, return empty set
     # (fields are dynamic and optional)
@@ -144,34 +141,26 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
         # Exact match: find(low=value, high=value)
         return {label for _, label in index.find(low=value, high=value)}
     elif ast.operator == '<':
-        # Less than: find from minimum to value (exclusive)
-        # Use find() without high bound, then filter
+        # Less than: find all values up to (but not including) value
+        # Use find() to get all values <= value, then filter out exact matches
         result = set()
-        for field_value, label in index.find():
+        for field_value, label in index.find(high=value):
             if field_value < value:
                 result.add(label)
-            elif field_value >= value:
-                # Since index is sorted, we can break early
-                break
         return result
     elif ast.operator == '<=':
-        # Less than or equal: find from minimum to value (inclusive)
-        result = set()
-        for field_value, label in index.find():
-            if field_value <= value:
-                result.add(label)
-            elif field_value > value:
-                break
-        return result
+        # Less than or equal: find all values up to and including value
+        return {label for _, label in index.find(high=value)}
     elif ast.operator == '>':
-        # Greater than: find from value (exclusive) to maximum
+        # Greater than: find all values from (but not including) value
+        # Use find() to get all values >= value, then filter out exact matches
         result = set()
-        for field_value, label in index.find():
+        for field_value, label in index.find(low=value):
             if field_value > value:
                 result.add(label)
         return result
     elif ast.operator == '>=':
-        # Greater than or equal: find from value (inclusive) to maximum
+        # Greater than or equal: find all values from value onwards
         return {label for _, label in index.find(low=value)}
     else:
         raise RemyError(

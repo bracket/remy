@@ -35,14 +35,16 @@ QUERY_GRAMMAR = r"""
 
     identifier: DOTTED_NAME
     literal: STRING | NUMBER | TRUE | FALSE | NULL
-    datetime_literal: STRING DATETIME_CAST
-    date_literal: STRING DATE_CAST
+    datetime_literal: STRING DATETIME_CAST | _NOW DATETIME_CAST
+    date_literal: STRING DATE_CAST | _TODAY DATE_CAST
     list_literal: "[" [literal ("," literal)*] "]"
 
     _AND.2: /\band\b/i
     _OR.2: /\bor\b/i
     _NOT.2: /\bnot\b/i
     _IN.2: /\bin\b/i
+    _NOW.2: /\bnow\b/i
+    _TODAY.2: /\btoday\b/i
 
     COMP_OP: "=" | "!=" | "<=" | ">=" | "<" | ">"
 

@@ -565,3 +565,158 @@ def test_ast_node_equality_date():
     
     ast3 = parse_query("date_field = '2024-02-01'::date")
     assert ast1 != ast3
+
+
+# ============================================================================
+# Special Keyword Tests for 'now' and 'today'
+# ============================================================================
+
+def test_parse_now_keyword():
+    """Test parsing 'now'::timestamp keyword."""
+    ast = parse_query("timestamp >= now::timestamp")
+    
+    assert isinstance(ast, Compare)
+    assert ast.operator == '>='
+    assert isinstance(ast.right, DateTimeLiteral)
+    assert isinstance(ast.right.value, datetime)
+    # Verify it's close to current time (within 1 second)
+    time_diff = (datetime.now(timezone.utc).replace(tzinfo=None) - ast.right.value).total_seconds()
+    assert abs(time_diff) < 1
+
+
+def test_parse_today_keyword():
+    """Test parsing 'today'::date keyword."""
+    ast = parse_query("date_field = today::date")
+    
+    assert isinstance(ast, Compare)
+    assert ast.operator == '='
+    assert isinstance(ast.right, DateLiteral)
+    assert isinstance(ast.right.value, date)
+    # Verify it's today's date
+    assert ast.right.value == date.today()
+
+
+def test_now_and_today_with_various_operators():
+    """Test that now and today work with all comparison operators."""
+    operators = ['<', '<=', '>', '>=', '=']
+    
+    for op in operators:
+        # Test now::timestamp
+        query = f"timestamp {op} now::timestamp"
+        ast = parse_query(query)
+        assert isinstance(ast, Compare)
+        assert ast.operator == op
+        assert isinstance(ast.right, DateTimeLiteral)
+        
+        # Test today::date
+        query = f"date_field {op} today::date"
+        ast = parse_query(query)
+        assert isinstance(ast, Compare)
+        assert ast.operator == op
+        assert isinstance(ast.right, DateLiteral)
+
+
+def test_now_in_complex_query():
+    """Test 'now' keyword in complex queries with AND/OR."""
+    query = "created >= now::timestamp AND status = 'active'"
+    ast = parse_query(query)
+    
+    from remy.query.ast_nodes import And
+    assert isinstance(ast, And)
+    assert isinstance(ast.left, Compare)
+    assert isinstance(ast.left.right, DateTimeLiteral)
+
+
+def test_today_in_complex_query():
+    """Test 'today' keyword in complex queries with AND/OR."""
+    query = "start_date <= today::date OR end_date >= today::date"
+    ast = parse_query(query)
+    
+    from remy.query.ast_nodes import Or
+    assert isinstance(ast, Or)
+    assert isinstance(ast.left, Compare)
+    assert isinstance(ast.left.right, DateLiteral)
+    assert isinstance(ast.right, Compare)
+    assert isinstance(ast.right.right, DateLiteral)
+
+
+def test_now_returns_utc_time():
+    """Test that 'now'::timestamp returns UTC time (naive datetime)."""
+    ast = parse_query("timestamp = now::timestamp")
+    
+    # Should be a naive datetime (no timezone info)
+    assert ast.right.value.tzinfo is None
+    
+    # Should be close to current UTC time
+    utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    time_diff = (utc_now - ast.right.value).total_seconds()
+    assert abs(time_diff) < 1
+
+
+def test_now_and_today_case_insensitive():
+    """Test that now and today keywords are case insensitive."""
+    # Test NOW
+    for variant in ['now', 'NOW', 'NoW', 'nOw']:
+        query = f"timestamp = {variant}::timestamp"
+        ast = parse_query(query)
+        assert isinstance(ast.right, DateTimeLiteral)
+    
+    # Test TODAY
+    for variant in ['today', 'TODAY', 'ToDay', 'tOdAy']:
+        query = f"date_field = {variant}::date"
+        ast = parse_query(query)
+        assert isinstance(ast.right, DateLiteral)
+
+
+def test_evaluate_query_with_now():
+    """Test evaluating queries with 'now' keyword."""
+    # Create a mock index with past and future datetimes
+    past_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+    future_dt = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)
+    
+    dt_index = MockNotecardIndex('TIMESTAMP', {
+        past_dt: {'card_past'},
+        future_dt: {'card_future'}
+    })
+    
+    field_indices = {'TIMESTAMP': dt_index}
+    
+    # Query: timestamp < now::timestamp (should match past)
+    ast = parse_query("timestamp < now::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card_past'}
+    
+    # Query: timestamp > now::timestamp (should match future)
+    ast = parse_query("timestamp > now::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card_future'}
+
+
+def test_evaluate_query_with_today():
+    """Test evaluating queries with 'today' keyword."""
+    # Create a mock index with dates
+    yesterday = date.today() - timedelta(days=1)
+    tomorrow = date.today() + timedelta(days=1)
+    
+    date_index = MockNotecardIndex('DATE_FIELD', {
+        yesterday: {'card_yesterday'},
+        date.today(): {'card_today'},
+        tomorrow: {'card_tomorrow'}
+    })
+    
+    field_indices = {'DATE_FIELD': date_index}
+    
+    # Query: date_field < today::date (should match yesterday)
+    ast = parse_query("date_field < today::date")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card_yesterday'}
+    
+    # Query: date_field = today::date (should match today)
+    ast = parse_query("date_field = today::date")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card_today'}
+    
+    # Query: date_field > today::date (should match tomorrow)
+    ast = parse_query("date_field > today::date")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card_tomorrow'}

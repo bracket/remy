@@ -7,6 +7,7 @@ They are separated from evaluation logic to maintain clean separation of concern
 
 from dataclasses import dataclass
 from typing import Any, List
+from datetime import datetime, date
 
 
 @dataclass
@@ -60,3 +61,15 @@ class Or(ASTNode):
 class Not(ASTNode):
     """Represents a logical NOT operation."""
     operand: ASTNode
+
+
+@dataclass
+class DateTimeLiteral(ASTNode):
+    """Represents a datetime literal value (e.g., '2024-01-31 15:30:00'::timestamp)."""
+    value: datetime
+
+
+@dataclass
+class DateLiteral(ASTNode):
+    """Represents a date literal value (e.g., '2024-01-31'::date)."""
+    value: date

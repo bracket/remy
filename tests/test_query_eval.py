@@ -3,13 +3,11 @@
 import pytest
 
 from remy.exceptions import RemyError
+from remy.notecard_index import null
 from remy.query.eval import evaluate_query
 from remy.query.ast_nodes import (
     Literal, Identifier, Compare, In, And, Or, Not
 )
-
-# Sentinel value to distinguish "no value" from "None value"
-_null = object()
 
 
 class MockNotecardIndex:
@@ -31,77 +29,60 @@ class MockNotecardIndex:
         self.field_name = field_name.upper()
         self.value_to_labels = value_to_labels
 
-    def find(self, low=_null, high=_null, snap=None):
+    def find(self, low=null, high=null, snap=None):
         """
         Mock implementation of NotecardIndex.find().
 
-        For equality matching (low == high), yields (value, label) tuples
-        for all labels associated with that value.
-        
-        For range queries, yields all (value, label) tuples where low <= value <= high.
+        Supports both equality matching (low == high) and range queries.
+        For range queries, returns all values in [low, high] inclusive.
 
         Args:
-            low: Lower bound value (defaults to sentinel _null)
-            high: Upper bound value (defaults to sentinel _null)
+            low: Lower bound value (defaults to sentinel null)
+            high: Upper bound value (defaults to sentinel null)
             snap: Snapping mode (ignored in mock)
 
         Yields:
             Tuples of (value, label) for matching entries
         """
-        # Get all values sorted (handle None specially)
-        all_values = list(self.value_to_labels.keys())
-        # Sort with None first (if present), then sort the rest
-        none_values = [v for v in all_values if v is None]
-        other_values = sorted([v for v in all_values if v is not None])
-        all_values = none_values + other_values
+        # For range queries, sort values (filtering out incomparable types)
+        try:
+            all_values = sorted(self.value_to_labels.keys())
+        except TypeError:
+            # Can't sort mixed types, just iterate without ordering
+            all_values = list(self.value_to_labels.keys())
         
-        # Determine the range
-        if low is _null:
-            start_idx = 0
-        else:
-            # Find first value >= low
-            start_idx = 0
-            for i, v in enumerate(all_values):
-                if v is None:
-                    # None compares less than everything, so if low is not None, skip it
-                    if low is not None:
-                        continue
-                if v is not None and low is not None and v >= low:
-                    start_idx = i
-                    break
-                if v == low:  # Exact match (including None == None)
-                    start_idx = i
-                    break
-            else:
-                # No value >= low, return empty
-                return
+        # Determine actual bounds
+        # If both low and high are null, return everything
+        # If low is null but high is set, return everything up to high
+        # If high is null but low is set, return everything from low onwards
+        # If both are set and equal, it's an exact match
+        # If both are set and different, it's a range query
         
-        if high is _null:
-            end_idx = len(all_values)
-        else:
-            # Find last value <= high
-            end_idx = len(all_values)
-            for i in range(len(all_values) - 1, -1, -1):
-                v = all_values[i]
-                if v is None:
-                    # None compares less than everything
-                    if high is None:
-                        end_idx = i + 1
-                        break
-                    else:
-                        # Skip None if high is not None
-                        continue
-                if v is not None and high is not None and v <= high:
-                    end_idx = i + 1
-                    break
-            else:
-                # No value <= high, return empty
-                return
-        
-        # Yield all matching (value, label) tuples
-        for value in all_values[start_idx:end_idx]:
+        for value in all_values:
+            # First check for exact match (handles None and other non-comparable values)
+            if low is not null and high is not null and low == high:
+                # Exact match case
+                if value == low:
+                    for label in self.value_to_labels[value]:
+                        yield (value, label)
+                continue
+            
+            # Range query - check if value is in range
+            try:
+                # Check lower bound
+                if low is not null and value < low:
+                    continue
+                    
+                # Check upper bound
+                if high is not null and value > high:
+                    continue
+            except TypeError:
+                # Can't compare types, skip this value
+                continue
+                
+            # Yield all labels for this value
             if value in self.value_to_labels:
-                for label in sorted(self.value_to_labels[value]):
+                for label in self.value_to_labels[value]:
                     yield (value, label)
 
 

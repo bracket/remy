@@ -103,13 +103,18 @@ class QueryTransformer(Transformer):
         datetime_str = str(token)[1:-1]
         
         try:
-            # Try to parse datetime - fromisoformat handles timezone automatically
-            dt = datetime.fromisoformat(datetime_str)
-            # Convert to UTC if timezone-aware
-            if dt.tzinfo is not None:
-                # Convert to UTC and make naive
-                dt = dt.astimezone(tz=None).replace(tzinfo=None)
-            return DateTimeLiteral(dt)
+            # Try to parse datetime with timezone info
+            if '+' in datetime_str or datetime_str.count('-') > 2:
+                # Has timezone - parse and convert to UTC
+                dt = datetime.fromisoformat(datetime_str)
+                # Convert to UTC if timezone-aware
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(tz=None).replace(tzinfo=None)
+                return DateTimeLiteral(dt)
+            else:
+                # No timezone - parse as naive datetime
+                dt = datetime.fromisoformat(datetime_str)
+                return DateTimeLiteral(dt)
         except ValueError as e:
             raise RemyError(
                 f"Invalid datetime format: '{datetime_str}'. "

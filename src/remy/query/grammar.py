@@ -28,11 +28,15 @@ QUERY_GRAMMAR = r"""
             | primary
 
     ?primary: identifier
+            | datetime_literal
+            | date_literal
             | literal
             | "(" or_expr ")"
 
     identifier: DOTTED_NAME
     literal: STRING | NUMBER | TRUE | FALSE | NULL
+    datetime_literal: STRING DATETIME_CAST
+    date_literal: STRING DATE_CAST
     list_literal: "[" [literal ("," literal)*] "]"
 
     _AND.2: /\band\b/i
@@ -49,6 +53,9 @@ QUERY_GRAMMAR = r"""
     DOTTED_NAME: /[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
 
     STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
+
+    DATETIME_CAST: "::timestamp"
+    DATE_CAST: "::date"
 
     NUMBER: SIGNED_NUMBER
 

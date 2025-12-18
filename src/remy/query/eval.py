@@ -21,7 +21,8 @@ Example usage:
 
 from remy.exceptions import RemyError
 from remy.query.ast_nodes import (
-    ASTNode, Literal, Identifier, Compare, In, And, Or, Not
+    ASTNode, Literal, Identifier, Compare, In, And, Or, Not,
+    DateTimeLiteral, DateLiteral
 )
 from typing import TYPE_CHECKING, Dict, Set
 
@@ -101,15 +102,14 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
         Set of primary labels matching the comparison
 
     Raises:
-        RemyError: If operator is not '=' or operands have wrong types
+        RemyError: If operands have wrong types
     """
-    # Only support equality for now
-    if ast.operator != '=':
+    # Check for unsupported operators first
+    if ast.operator == '!=':
         raise RemyError(
-            f"Comparison operator '{ast.operator}' is not yet supported. "
-            f"Currently only '=' is supported."
+            f"Comparison operator '!=' is not yet supported."
         )
-
+    
     # Left side must be an Identifier (field name)
     if not isinstance(ast.left, Identifier):
         raise RemyError(
@@ -117,15 +117,20 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             f"got {type(ast.left).__name__}"
         )
 
-    # Right side must be a Literal (value to match)
-    if not isinstance(ast.right, Literal):
+    # Right side must be a Literal (value to match) or temporal literal
+    if not isinstance(ast.right, (Literal, DateTimeLiteral, DateLiteral)):
         raise RemyError(
             f"Right operand of comparison must be a Literal (value), "
             f"got {type(ast.right).__name__}"
         )
 
     field_name = ast.left.name.upper()
-    value = ast.right.value
+    
+    # Extract the value from the literal
+    if isinstance(ast.right, (DateTimeLiteral, DateLiteral)):
+        value = ast.right.value
+    else:
+        value = ast.right.value
 
     # If the field doesn't exist in indices, return empty set
     # (fields are dynamic and optional)
@@ -134,9 +139,44 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
 
     index = field_indices[field_name]
 
-    # Use NotecardIndex.find() to get matching labels
-    # find(low=value, high=value) returns iterator of (value, label) tuples
-    return {label for _, label in index.find(low=value, high=value)}
+    # Handle different comparison operators
+    if ast.operator == '=':
+        # Exact match: find(low=value, high=value)
+        return {label for _, label in index.find(low=value, high=value)}
+    elif ast.operator == '<':
+        # Less than: find from minimum to value (exclusive)
+        # Use find() without high bound, then filter
+        result = set()
+        for field_value, label in index.find():
+            if field_value < value:
+                result.add(label)
+            elif field_value >= value:
+                # Since index is sorted, we can break early
+                break
+        return result
+    elif ast.operator == '<=':
+        # Less than or equal: find from minimum to value (inclusive)
+        result = set()
+        for field_value, label in index.find():
+            if field_value <= value:
+                result.add(label)
+            elif field_value > value:
+                break
+        return result
+    elif ast.operator == '>':
+        # Greater than: find from value (exclusive) to maximum
+        result = set()
+        for field_value, label in index.find():
+            if field_value > value:
+                result.add(label)
+        return result
+    elif ast.operator == '>=':
+        # Greater than or equal: find from value (inclusive) to maximum
+        return {label for _, label in index.find(low=value)}
+    else:
+        raise RemyError(
+            f"Unsupported comparison operator: '{ast.operator}'"
+        )
 
 
 def _evaluate_and(ast: And, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:

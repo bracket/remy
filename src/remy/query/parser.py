@@ -6,11 +6,13 @@ into an abstract syntax tree (AST) for later evaluation.
 """
 
 from lark import Transformer, exceptions as lark_exceptions
+from datetime import datetime, date
 
 from remy.exceptions import RemyError
 from remy.query.grammar import get_parser
 from remy.query.ast_nodes import (
-    Literal, Identifier, Compare, In, And, Or, Not
+    Literal, Identifier, Compare, In, And, Or, Not,
+    DateTimeLiteral, DateLiteral
 )
 
 
@@ -85,6 +87,49 @@ class QueryTransformer(Transformer):
         """Transform list literal."""
         # Filter out None values (from optional empty lists)
         return [item for item in args if item is not None]
+
+    def datetime_literal(self, args):
+        """Transform datetime literal (e.g., '2024-01-31 15:30:00'::timestamp)."""
+        string_token = args[0]
+        # Remove quotes from the string
+        datetime_str = str(string_token)[1:-1]
+        
+        try:
+            # Try to parse datetime with timezone info
+            if '+' in datetime_str or datetime_str.count('-') > 2:
+                # Has timezone - parse and convert to UTC
+                dt = datetime.fromisoformat(datetime_str)
+                # Convert to UTC if timezone-aware
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(tz=None).replace(tzinfo=None)
+                return DateTimeLiteral(dt)
+            else:
+                # No timezone - parse as naive datetime
+                dt = datetime.fromisoformat(datetime_str)
+                return DateTimeLiteral(dt)
+        except ValueError as e:
+            raise RemyError(
+                f"Invalid datetime format: '{datetime_str}'. "
+                f"Expected ISO format 'YYYY-MM-DD HH:MM:SS' with optional timezone. "
+                f"Error: {str(e)}"
+            )
+
+    def date_literal(self, args):
+        """Transform date literal (e.g., '2024-01-31'::date)."""
+        string_token = args[0]
+        # Remove quotes from the string
+        date_str = str(string_token)[1:-1]
+        
+        try:
+            # Parse date in ISO format
+            dt = date.fromisoformat(date_str)
+            return DateLiteral(dt)
+        except ValueError as e:
+            raise RemyError(
+                f"Invalid date format: '{date_str}'. "
+                f"Expected ISO format 'YYYY-MM-DD'. "
+                f"Error: {str(e)}"
+            )
 
 
 def parse_query(query):

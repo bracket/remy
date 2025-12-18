@@ -3,13 +3,11 @@
 import pytest
 
 from remy.exceptions import RemyError
+from remy.notecard_index import null
 from remy.query.eval import evaluate_query
 from remy.query.ast_nodes import (
     Literal, Identifier, Compare, In, And, Or, Not
 )
-
-# Sentinel value to distinguish "no value" from "None value"
-_null = object()
 
 
 class MockNotecardIndex:
@@ -31,24 +29,58 @@ class MockNotecardIndex:
         self.field_name = field_name.upper()
         self.value_to_labels = value_to_labels
 
-    def find(self, low=_null, high=_null, snap=None):
+    def find(self, low=null, high=null, snap=None):
         """
         Mock implementation of NotecardIndex.find().
 
-        For equality matching (low == high), yields (value, label) tuples
-        for all labels associated with that value.
+        Supports both equality matching (low == high) and range queries.
+        For range queries, returns all values in [low, high] inclusive.
 
         Args:
-            low: Lower bound value (defaults to sentinel _null)
-            high: Upper bound value (defaults to sentinel _null)
+            low: Lower bound value (defaults to sentinel null)
+            high: Upper bound value (defaults to sentinel null)
             snap: Snapping mode (ignored in mock)
 
         Yields:
             Tuples of (value, label) for matching entries
         """
-        # For our test purposes, we only handle exact matches (low == high)
-        if low is not _null and high is not _null and low == high:
-            value = low
+        # For range queries, sort values (filtering out incomparable types)
+        try:
+            all_values = sorted(self.value_to_labels.keys())
+        except TypeError:
+            # Can't sort mixed types, just iterate without ordering
+            all_values = list(self.value_to_labels.keys())
+        
+        # Determine actual bounds
+        # If both low and high are null, return everything
+        # If low is null but high is set, return everything up to high
+        # If high is null but low is set, return everything from low onwards
+        # If both are set and equal, it's an exact match
+        # If both are set and different, it's a range query
+        
+        for value in all_values:
+            # First check for exact match (handles None and other non-comparable values)
+            if low is not null and high is not null and low == high:
+                # Exact match case
+                if value == low:
+                    for label in self.value_to_labels[value]:
+                        yield (value, label)
+                continue
+            
+            # Range query - check if value is in range
+            try:
+                # Check lower bound
+                if low is not null and value < low:
+                    continue
+                    
+                # Check upper bound
+                if high is not null and value > high:
+                    continue
+            except TypeError:
+                # Can't compare types, skip this value
+                continue
+                
+            # Yield all labels for this value
             if value in self.value_to_labels:
                 for label in self.value_to_labels[value]:
                     yield (value, label)
@@ -224,46 +256,6 @@ def test_evaluate_unsupported_operator_not_equal():
         evaluate_query(ast, field_indices)
 
 
-def test_evaluate_unsupported_operator_less_than():
-    """Test that < operator raises RemyError."""
-    field_indices = {}
-
-    ast = Compare('<', Identifier('age'), Literal(18))
-
-    with pytest.raises(RemyError, match="not yet supported"):
-        evaluate_query(ast, field_indices)
-
-
-def test_evaluate_unsupported_operator_greater_than():
-    """Test that > operator raises RemyError."""
-    field_indices = {}
-
-    ast = Compare('>', Identifier('age'), Literal(18))
-
-    with pytest.raises(RemyError, match="not yet supported"):
-        evaluate_query(ast, field_indices)
-
-
-def test_evaluate_unsupported_operator_less_equal():
-    """Test that <= operator raises RemyError."""
-    field_indices = {}
-
-    ast = Compare('<=', Identifier('count'), Literal(10))
-
-    with pytest.raises(RemyError, match="not yet supported"):
-        evaluate_query(ast, field_indices)
-
-
-def test_evaluate_unsupported_operator_greater_equal():
-    """Test that >= operator raises RemyError."""
-    field_indices = {}
-
-    ast = Compare('>=', Identifier('score'), Literal(90))
-
-    with pytest.raises(RemyError, match="not yet supported"):
-        evaluate_query(ast, field_indices)
-
-
 def test_evaluate_not_operator_not_supported():
     """Test that NOT operator raises not-yet-implemented error."""
     field_indices = {}
@@ -409,3 +401,392 @@ def test_evaluate_float_types():
     result = evaluate_query(ast, field_indices)
 
     assert result == {'card1'}
+
+
+# ========== Tests for order-based comparison operators ==========
+
+
+def test_evaluate_less_than_operator():
+    """Test < operator with numeric values."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'},
+        5: {'card5'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority < 3
+    ast = Compare('<', Identifier('priority'), Literal(3))
+    result = evaluate_query(ast, field_indices)
+
+    # Should include only cards with priority 1 and 2
+    assert result == {'card1', 'card2'}
+
+
+def test_evaluate_less_than_with_strings():
+    """Test < operator with string values."""
+    status_index = MockNotecardIndex('STATUS', {
+        'active': {'card1'},
+        'completed': {'card2'},
+        'pending': {'card3'},
+        'rejected': {'card4'}
+    })
+
+    field_indices = {'STATUS': status_index}
+
+    # Query: status < 'pending' (lexicographic comparison)
+    ast = Compare('<', Identifier('status'), Literal('pending'))
+    result = evaluate_query(ast, field_indices)
+
+    # 'active' and 'completed' are both < 'pending' lexicographically
+    assert result == {'card1', 'card2'}
+
+
+def test_evaluate_less_than_no_matches():
+    """Test < operator when no values are less than threshold."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        5: {'card1'},
+        6: {'card2'},
+        7: {'card3'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority < 5 (no values less than 5)
+    ast = Compare('<', Identifier('priority'), Literal(5))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == set()
+
+
+def test_evaluate_less_than_boundary():
+    """Test < operator at boundary - should exclude the boundary value."""
+    score_index = MockNotecardIndex('SCORE', {
+        85.0: {'card1'},
+        90.0: {'card2', 'card3'},
+        95.0: {'card4'}
+    })
+
+    field_indices = {'SCORE': score_index}
+
+    # Query: score < 90.0 (should not include 90.0)
+    ast = Compare('<', Identifier('score'), Literal(90.0))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card1'}
+
+
+def test_evaluate_less_equal_operator():
+    """Test <= operator with numeric values."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'},
+        5: {'card5'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority <= 3
+    ast = Compare('<=', Identifier('priority'), Literal(3))
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards with priority 1, 2, and 3
+    assert result == {'card1', 'card2', 'card3'}
+
+
+def test_evaluate_less_equal_boundary():
+    """Test <= operator includes the boundary value."""
+    score_index = MockNotecardIndex('SCORE', {
+        85.0: {'card1'},
+        90.0: {'card2', 'card3'},
+        95.0: {'card4'}
+    })
+
+    field_indices = {'SCORE': score_index}
+
+    # Query: score <= 90.0 (should include 90.0)
+    ast = Compare('<=', Identifier('score'), Literal(90.0))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card1', 'card2', 'card3'}
+
+
+def test_evaluate_greater_than_operator():
+    """Test > operator with numeric values."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'},
+        5: {'card5'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority > 3
+    ast = Compare('>', Identifier('priority'), Literal(3))
+    result = evaluate_query(ast, field_indices)
+
+    # Should include only cards with priority 4 and 5
+    assert result == {'card4', 'card5'}
+
+
+def test_evaluate_greater_than_with_dates():
+    """Test > operator with date strings (assuming ISO format for ordering)."""
+    date_index = MockNotecardIndex('DATE', {
+        '2025-01-01': {'card1'},
+        '2025-01-15': {'card2'},
+        '2025-02-01': {'card3'},
+        '2025-03-01': {'card4'}
+    })
+
+    field_indices = {'DATE': date_index}
+
+    # Query: date > '2025-01-15'
+    ast = Compare('>', Identifier('date'), Literal('2025-01-15'))
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards after 2025-01-15
+    assert result == {'card3', 'card4'}
+
+
+def test_evaluate_greater_than_no_matches():
+    """Test > operator when no values are greater than threshold."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority > 5 (no values greater than 5)
+    ast = Compare('>', Identifier('priority'), Literal(5))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == set()
+
+
+def test_evaluate_greater_than_boundary():
+    """Test > operator at boundary - should exclude the boundary value."""
+    score_index = MockNotecardIndex('SCORE', {
+        85.0: {'card1'},
+        90.0: {'card2', 'card3'},
+        95.0: {'card4'}
+    })
+
+    field_indices = {'SCORE': score_index}
+
+    # Query: score > 90.0 (should not include 90.0)
+    ast = Compare('>', Identifier('score'), Literal(90.0))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card4'}
+
+
+def test_evaluate_greater_equal_operator():
+    """Test >= operator with numeric values."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'},
+        5: {'card5'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority >= 3
+    ast = Compare('>=', Identifier('priority'), Literal(3))
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards with priority 3, 4, and 5
+    assert result == {'card3', 'card4', 'card5'}
+
+
+def test_evaluate_greater_equal_boundary():
+    """Test >= operator includes the boundary value."""
+    score_index = MockNotecardIndex('SCORE', {
+        85.0: {'card1'},
+        90.0: {'card2', 'card3'},
+        95.0: {'card4'}
+    })
+
+    field_indices = {'SCORE': score_index}
+
+    # Query: score >= 90.0 (should include 90.0)
+    ast = Compare('>=', Identifier('score'), Literal(90.0))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card2', 'card3', 'card4'}
+
+
+def test_evaluate_range_with_and():
+    """Test range query using AND to combine >= and <=."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'},
+        5: {'card5'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority >= 2 AND priority <= 4
+    ast = And(
+        Compare('>=', Identifier('priority'), Literal(2)),
+        Compare('<=', Identifier('priority'), Literal(4))
+    )
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards with priority 2, 3, and 4
+    assert result == {'card2', 'card3', 'card4'}
+
+
+def test_evaluate_date_range_query():
+    """Test date range query combining > and < operators with AND."""
+    date_index = MockNotecardIndex('DATE', {
+        '2025-01-01': {'card1'},
+        '2025-01-15': {'card2'},
+        '2025-02-01': {'card3'},
+        '2025-02-15': {'card4'},
+        '2025-03-01': {'card5'}
+    })
+
+    field_indices = {'DATE': date_index}
+
+    # Query: date > '2025-01-01' AND date < '2025-03-01'
+    ast = And(
+        Compare('>', Identifier('date'), Literal('2025-01-01')),
+        Compare('<', Identifier('date'), Literal('2025-03-01'))
+    )
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards between the dates (exclusive)
+    assert result == {'card2', 'card3', 'card4'}
+
+
+def test_evaluate_inequality_with_or():
+    """Test inequality operators combined with OR."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'},
+        5: {'card5'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority < 2 OR priority > 4
+    ast = Or(
+        Compare('<', Identifier('priority'), Literal(2)),
+        Compare('>', Identifier('priority'), Literal(4))
+    )
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards with priority 1 or 5
+    assert result == {'card1', 'card5'}
+
+
+def test_evaluate_complex_query_with_inequalities():
+    """Test complex query with multiple fields and inequality operators."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1', 'card2'},
+        2: {'card3'},
+        3: {'card4', 'card5'}
+    })
+
+    status_index = MockNotecardIndex('STATUS', {
+        'active': {'card1', 'card3', 'card4'},
+        'pending': {'card2', 'card5'}
+    })
+
+    field_indices = {
+        'PRIORITY': priority_index,
+        'STATUS': status_index
+    }
+
+    # Query: priority >= 2 AND status = 'active'
+    ast = And(
+        Compare('>=', Identifier('priority'), Literal(2)),
+        Compare('=', Identifier('status'), Literal('active'))
+    )
+    result = evaluate_query(ast, field_indices)
+
+    # card3: priority 2, status active
+    # card4: priority 3, status active
+    assert result == {'card3', 'card4'}
+
+
+def test_evaluate_inequality_unknown_field():
+    """Test that inequality on unknown field returns empty set."""
+    field_indices = {}
+
+    # Query: unknown_field > 5
+    ast = Compare('>', Identifier('unknown_field'), Literal(5))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == set()
+
+
+def test_evaluate_inequality_value_not_in_index():
+    """Test inequality when the literal value is not in the index."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        3: {'card2'},
+        5: {'card3'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority > 2 (2 is not in the index, but should still work)
+    ast = Compare('>', Identifier('priority'), Literal(2))
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards with priority > 2 (i.e., 3 and 5)
+    assert result == {'card2', 'card3'}
+
+
+def test_evaluate_less_than_value_not_in_index():
+    """Test < when the literal value is not in the index."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        3: {'card2'},
+        5: {'card3'}
+    })
+
+    field_indices = {'PRIORITY': priority_index}
+
+    # Query: priority < 4 (4 is not in the index)
+    ast = Compare('<', Identifier('priority'), Literal(4))
+    result = evaluate_query(ast, field_indices)
+
+    # Should include cards with priority < 4 (i.e., 1 and 3)
+    assert result == {'card1', 'card2'}
+
+
+def test_evaluate_all_operators_together():
+    """Test all comparison operators can be used together."""
+    value_index = MockNotecardIndex('VALUE', {
+        10: {'card1'},
+        20: {'card2'},
+        30: {'card3'},
+        40: {'card4'},
+        50: {'card5'}
+    })
+
+    field_indices = {'VALUE': value_index}
+
+    # Test each operator individually
+    assert evaluate_query(Compare('=', Identifier('value'), Literal(30)), field_indices) == {'card3'}
+    assert evaluate_query(Compare('<', Identifier('value'), Literal(30)), field_indices) == {'card1', 'card2'}
+    assert evaluate_query(Compare('<=', Identifier('value'), Literal(30)), field_indices) == {'card1', 'card2', 'card3'}
+    assert evaluate_query(Compare('>', Identifier('value'), Literal(30)), field_indices) == {'card4', 'card5'}
+    assert evaluate_query(Compare('>=', Identifier('value'), Literal(30)), field_indices) == {'card3', 'card4', 'card5'}

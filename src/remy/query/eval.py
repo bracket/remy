@@ -20,6 +20,7 @@ Example usage:
 """
 
 from remy.exceptions import RemyError
+from remy.notecard_index import null
 from remy.query.ast_nodes import (
     ASTNode, Literal, Identifier, Compare, In, And, Or, Not
 )
@@ -48,11 +49,15 @@ def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> S
 
     Supported operations:
         - Compare with '=' operator: field = value
+        - Compare with '<' operator: field < value
+        - Compare with '<=' operator: field <= value
+        - Compare with '>' operator: field > value
+        - Compare with '>=' operator: field >= value
         - And: intersection of two sub-queries
         - Or: union of two sub-queries
 
     Not yet supported (will raise RemyError):
-        - Compare with !=, <, <=, >, >= operators
+        - Compare with != operator
         - Not: logical negation
         - In: membership testing
 
@@ -101,13 +106,13 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
         Set of primary labels matching the comparison
 
     Raises:
-        RemyError: If operator is not '=' or operands have wrong types
+        RemyError: If operator is not supported or operands have wrong types
     """
-    # Only support equality for now
-    if ast.operator != '=':
+    # Validate supported operators
+    if ast.operator not in ('=', '<', '<=', '>', '>='):
         raise RemyError(
             f"Comparison operator '{ast.operator}' is not yet supported. "
-            f"Currently only '=' is supported."
+            f"Currently supported: =, <, <=, >, >="
         )
 
     # Left side must be an Identifier (field name)
@@ -135,8 +140,49 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     index = field_indices[field_name]
 
     # Use NotecardIndex.find() to get matching labels
-    # find(low=value, high=value) returns iterator of (value, label) tuples
-    return {label for _, label in index.find(low=value, high=value)}
+    # The approach differs based on the operator:
+    # - '=': find(low=value, high=value) - exact match
+    # - '<': find(low=null, high=value) excluding value itself
+    # - '<=': find(low=null, high=value) including value
+    # - '>': find(low=value, high=null) excluding value itself
+    # - '>=': find(low=value, high=null) including value
+    
+    if ast.operator == '=':
+        # Exact match: low=value, high=value
+        return {label for _, label in index.find(low=value, high=value)}
+    
+    elif ast.operator == '<':
+        # Strictly less than: all values up to (but not including) value
+        # Note: NotecardIndex.find() doesn't support exclusive boundaries,
+        # so we retrieve values <= value and filter out the boundary value.
+        # This is efficient because we only filter the boundary value(s).
+        result = set()
+        for field_value, label in index.find(low=null, high=value):
+            if field_value < value:
+                result.add(label)
+        return result
+    
+    elif ast.operator == '<=':
+        # Less than or equal: all values up to and including value
+        return {label for _, label in index.find(low=null, high=value)}
+    
+    elif ast.operator == '>':
+        # Strictly greater than: all values from value onwards, excluding value
+        # Note: NotecardIndex.find() doesn't support exclusive boundaries,
+        # so we retrieve values >= value and filter out the boundary value.
+        # This is efficient because we only filter the boundary value(s).
+        result = set()
+        for field_value, label in index.find(low=value, high=null):
+            if field_value > value:
+                result.add(label)
+        return result
+    
+    elif ast.operator == '>=':
+        # Greater than or equal: all values from value onwards
+        return {label for _, label in index.find(low=value, high=null)}
+    
+    # This should never be reached due to the operator validation above
+    raise RemyError(f"Unexpected operator: {ast.operator}")
 
 
 def _evaluate_and(ast: And, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:

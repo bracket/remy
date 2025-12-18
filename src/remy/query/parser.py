@@ -6,7 +6,7 @@ into an abstract syntax tree (AST) for later evaluation.
 """
 
 from lark import Transformer, exceptions as lark_exceptions
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from remy.exceptions import RemyError
 from remy.query.grammar import get_parser
@@ -89,10 +89,18 @@ class QueryTransformer(Transformer):
         return [item for item in args if item is not None]
 
     def datetime_literal(self, args):
-        """Transform datetime literal (e.g., '2024-01-31 15:30:00'::timestamp)."""
-        string_token = args[0]
+        """Transform datetime literal (e.g., '2024-01-31 15:30:00'::timestamp or now::timestamp)."""
+        # Check if the first argument is a DATETIME_CAST token (meaning no string was provided)
+        # This happens with now::timestamp where _NOW is filtered out by Lark
+        if len(args) == 1 and hasattr(args[0], 'type') and args[0].type == 'DATETIME_CAST':
+            # Return current UTC datetime (naive, without timezone info)
+            dt = datetime.now(timezone.utc).replace(tzinfo=None)
+            return DateTimeLiteral(dt)
+        
+        # Otherwise it's a string literal followed by DATETIME_CAST
+        token = args[0]
         # Remove quotes from the string
-        datetime_str = str(string_token)[1:-1]
+        datetime_str = str(token)[1:-1]
         
         try:
             # Try to parse datetime - fromisoformat handles timezone automatically
@@ -110,10 +118,18 @@ class QueryTransformer(Transformer):
             )
 
     def date_literal(self, args):
-        """Transform date literal (e.g., '2024-01-31'::date)."""
-        string_token = args[0]
+        """Transform date literal (e.g., '2024-01-31'::date or today::date)."""
+        # Check if the first argument is a DATE_CAST token (meaning no string was provided)
+        # This happens with today::date where _TODAY is filtered out by Lark
+        if len(args) == 1 and hasattr(args[0], 'type') and args[0].type == 'DATE_CAST':
+            # Return current UTC date
+            dt = date.today()
+            return DateLiteral(dt)
+        
+        # Otherwise it's a string literal followed by DATE_CAST
+        token = args[0]
         # Remove quotes from the string
-        date_str = str(string_token)[1:-1]
+        date_str = str(token)[1:-1]
         
         try:
             # Parse date in ISO format

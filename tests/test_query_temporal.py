@@ -557,7 +557,7 @@ def test_ast_node_equality_date():
 
 def test_parse_now_keyword():
     """Test parsing 'now'::timestamp keyword."""
-    ast = parse_query("timestamp >= now::timestamp")
+    ast = parse_query("timestamp >= 'now'::timestamp")
     
     assert isinstance(ast, Compare)
     assert ast.operator == '>='
@@ -570,7 +570,7 @@ def test_parse_now_keyword():
 
 def test_parse_today_keyword():
     """Test parsing 'today'::date keyword."""
-    ast = parse_query("date_field = today::date")
+    ast = parse_query("date_field = 'today'::date")
     
     assert isinstance(ast, Compare)
     assert ast.operator == '='
@@ -585,15 +585,15 @@ def test_now_and_today_with_various_operators():
     operators = ['<', '<=', '>', '>=', '=']
     
     for op in operators:
-        # Test now::timestamp
-        query = f"timestamp {op} now::timestamp"
+        # Test 'now'::timestamp
+        query = f"timestamp {op} 'now'::timestamp"
         ast = parse_query(query)
         assert isinstance(ast, Compare)
         assert ast.operator == op
         assert isinstance(ast.right, DateTimeLiteral)
         
-        # Test today::date
-        query = f"date_field {op} today::date"
+        # Test 'today'::date
+        query = f"date_field {op} 'today'::date"
         ast = parse_query(query)
         assert isinstance(ast, Compare)
         assert ast.operator == op
@@ -602,7 +602,7 @@ def test_now_and_today_with_various_operators():
 
 def test_now_in_complex_query():
     """Test 'now' keyword in complex queries with AND/OR."""
-    query = "created >= now::timestamp AND status = 'active'"
+    query = "created >= 'now'::timestamp AND status = 'active'"
     ast = parse_query(query)
     
     from remy.query.ast_nodes import And
@@ -613,7 +613,7 @@ def test_now_in_complex_query():
 
 def test_today_in_complex_query():
     """Test 'today' keyword in complex queries with AND/OR."""
-    query = "start_date <= today::date OR end_date >= today::date"
+    query = "start_date <= 'today'::date OR end_date >= 'today'::date"
     ast = parse_query(query)
     
     from remy.query.ast_nodes import Or
@@ -626,7 +626,7 @@ def test_today_in_complex_query():
 
 def test_now_returns_utc_time():
     """Test that 'now'::timestamp returns UTC time (naive datetime)."""
-    ast = parse_query("timestamp = now::timestamp")
+    ast = parse_query("timestamp = 'now'::timestamp")
     
     # Should be a naive datetime (no timezone info)
     assert ast.right.value.tzinfo is None
@@ -641,13 +641,13 @@ def test_now_and_today_case_insensitive():
     """Test that now and today keywords are case insensitive."""
     # Test NOW
     for variant in ['now', 'NOW', 'NoW', 'nOw']:
-        query = f"timestamp = {variant}::timestamp"
+        query = f"timestamp = '{variant}'::timestamp"
         ast = parse_query(query)
         assert isinstance(ast.right, DateTimeLiteral)
     
     # Test TODAY
     for variant in ['today', 'TODAY', 'ToDay', 'tOdAy']:
-        query = f"date_field = {variant}::date"
+        query = f"date_field = '{variant}'::date"
         ast = parse_query(query)
         assert isinstance(ast.right, DateLiteral)
 
@@ -665,13 +665,13 @@ def test_evaluate_query_with_now():
     
     field_indices = {'TIMESTAMP': dt_index}
     
-    # Query: timestamp < now::timestamp (should match past)
-    ast = parse_query("timestamp < now::timestamp")
+    # Query: timestamp < 'now'::timestamp (should match past)
+    ast = parse_query("timestamp < 'now'::timestamp")
     result = evaluate_query(ast, field_indices)
     assert result == {'card_past'}
     
-    # Query: timestamp > now::timestamp (should match future)
-    ast = parse_query("timestamp > now::timestamp")
+    # Query: timestamp > 'now'::timestamp (should match future)
+    ast = parse_query("timestamp > 'now'::timestamp")
     result = evaluate_query(ast, field_indices)
     assert result == {'card_future'}
 
@@ -690,17 +690,17 @@ def test_evaluate_query_with_today():
     
     field_indices = {'DATE_FIELD': date_index}
     
-    # Query: date_field < today::date (should match yesterday)
-    ast = parse_query("date_field < today::date")
+    # Query: date_field < 'today'::date (should match yesterday)
+    ast = parse_query("date_field < 'today'::date")
     result = evaluate_query(ast, field_indices)
     assert result == {'card_yesterday'}
     
-    # Query: date_field = today::date (should match today)
-    ast = parse_query("date_field = today::date")
+    # Query: date_field = 'today'::date (should match today)
+    ast = parse_query("date_field = 'today'::date")
     result = evaluate_query(ast, field_indices)
     assert result == {'card_today'}
     
-    # Query: date_field > today::date (should match tomorrow)
-    ast = parse_query("date_field > today::date")
+    # Query: date_field > 'today'::date (should match tomorrow)
+    ast = parse_query("date_field > 'today'::date")
     result = evaluate_query(ast, field_indices)
     assert result == {'card_tomorrow'}

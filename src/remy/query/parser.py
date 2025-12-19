@@ -89,32 +89,26 @@ class QueryTransformer(Transformer):
         return [item for item in args if item is not None]
 
     def datetime_literal(self, args):
-        """Transform datetime literal (e.g., '2024-01-31 15:30:00'::timestamp or now::timestamp)."""
-        # Check if the first argument is a DATETIME_CAST token (meaning no string was provided)
-        # This happens with now::timestamp where _NOW is filtered out by Lark
-        if len(args) == 1 and hasattr(args[0], 'type') and args[0].type == 'DATETIME_CAST':
-            # Return current UTC datetime (naive, without timezone info)
-            dt = datetime.now(timezone.utc).replace(tzinfo=None)
-            return DateTimeLiteral(dt)
-        
-        # Otherwise it's a string literal followed by DATETIME_CAST
+        """Transform datetime literal (e.g., '2024-01-31 15:30:00'::timestamp or 'now'::timestamp)."""
+        # Get the string token
         token = args[0]
         # Remove quotes from the string
         datetime_str = str(token)[1:-1]
         
+        # Check if this is the special "now" keyword (case-insensitive)
+        if datetime_str.lower() == 'now':
+            # Return current UTC datetime (naive, without timezone info)
+            dt = datetime.now(timezone.utc).replace(tzinfo=None)
+            return DateTimeLiteral(dt)
+        
         try:
-            # Try to parse datetime with timezone info
-            if '+' in datetime_str or datetime_str.count('-') > 2:
-                # Has timezone - parse and convert to UTC
-                dt = datetime.fromisoformat(datetime_str)
-                # Convert to UTC if timezone-aware
-                if dt.tzinfo is not None:
-                    dt = dt.astimezone(tz=None).replace(tzinfo=None)
-                return DateTimeLiteral(dt)
-            else:
-                # No timezone - parse as naive datetime
-                dt = datetime.fromisoformat(datetime_str)
-                return DateTimeLiteral(dt)
+            # Try to parse datetime - fromisoformat handles timezone automatically
+            dt = datetime.fromisoformat(datetime_str)
+            # Convert to UTC if timezone-aware
+            if dt.tzinfo is not None:
+                # Convert to UTC and make naive
+                dt = dt.astimezone(tz=None).replace(tzinfo=None)
+            return DateTimeLiteral(dt)
         except ValueError as e:
             raise RemyError(
                 f"Invalid datetime format: '{datetime_str}'. "
@@ -123,18 +117,17 @@ class QueryTransformer(Transformer):
             )
 
     def date_literal(self, args):
-        """Transform date literal (e.g., '2024-01-31'::date or today::date)."""
-        # Check if the first argument is a DATE_CAST token (meaning no string was provided)
-        # This happens with today::date where _TODAY is filtered out by Lark
-        if len(args) == 1 and hasattr(args[0], 'type') and args[0].type == 'DATE_CAST':
-            # Return current UTC date
-            dt = date.today()
-            return DateLiteral(dt)
-        
-        # Otherwise it's a string literal followed by DATE_CAST
+        """Transform date literal (e.g., '2024-01-31'::date or 'today'::date)."""
+        # Get the string token
         token = args[0]
         # Remove quotes from the string
         date_str = str(token)[1:-1]
+        
+        # Check if this is the special "today" keyword (case-insensitive)
+        if date_str.lower() == 'today':
+            # Return current UTC date
+            dt = date.today()
+            return DateLiteral(dt)
         
         try:
             # Parse date in ISO format

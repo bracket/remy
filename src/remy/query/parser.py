@@ -106,8 +106,8 @@ class QueryTransformer(Transformer):
             dt = datetime.fromisoformat(datetime_str)
             # Convert to UTC if timezone-aware
             if dt.tzinfo is not None:
-                # Convert to UTC and make naive
-                dt = dt.astimezone(tz=None).replace(tzinfo=None)
+                # Convert to UTC explicitly and make naive
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
             return DateTimeLiteral(dt)
         except ValueError as e:
             raise RemyError(

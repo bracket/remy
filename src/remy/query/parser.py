@@ -97,17 +97,19 @@ class QueryTransformer(Transformer):
         
         # Check if this is the special "now" keyword (case-insensitive)
         if datetime_str.lower() == 'now':
-            # Return current UTC datetime (naive, without timezone info)
-            dt = datetime.now(timezone.utc).replace(tzinfo=None)
+            # Return current UTC datetime (timezone-aware)
+            dt = datetime.now(timezone.utc)
             return DateTimeLiteral(dt)
         
         try:
             # Try to parse datetime - fromisoformat handles timezone automatically
             dt = datetime.fromisoformat(datetime_str)
-            # Convert to UTC if timezone-aware
+            # If timezone-aware, convert to UTC
             if dt.tzinfo is not None:
-                # Convert to UTC explicitly and make naive
-                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                dt = dt.astimezone(timezone.utc)
+            else:
+                # If no timezone specified, treat as UTC
+                dt = dt.replace(tzinfo=timezone.utc)
             return DateTimeLiteral(dt)
         except ValueError as e:
             raise RemyError(

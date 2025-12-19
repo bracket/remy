@@ -105,8 +105,9 @@ def test_parse_datetime_literal_basic():
     assert isinstance(ast.left, Identifier)
     assert ast.left.name == 'created_date'
     assert isinstance(ast.right, DateTimeLiteral)
-    assert ast.right.value == datetime(2024, 1, 31, 15, 30, 0)
-    assert ast.right.value.tzinfo is None  # Should be naive
+    assert ast.right.value == datetime(2024, 1, 31, 15, 30, 0, tzinfo=timezone.utc)
+    assert ast.right.value.tzinfo is not None  # Should be timezone-aware
+    assert ast.right.value.tzinfo == timezone.utc
 
 
 def test_parse_datetime_literal_with_timezone_positive():
@@ -116,8 +117,9 @@ def test_parse_datetime_literal_with_timezone_positive():
     assert isinstance(ast, Compare)
     assert isinstance(ast.right, DateTimeLiteral)
     # 10:00:00+05:00 should be converted to 05:00:00 UTC
-    assert ast.right.value == datetime(2024, 6, 15, 5, 0, 0)
-    assert ast.right.value.tzinfo is None  # Should be naive after UTC conversion
+    assert ast.right.value == datetime(2024, 6, 15, 5, 0, 0, tzinfo=timezone.utc)
+    assert ast.right.value.tzinfo is not None  # Should be timezone-aware in UTC
+    assert ast.right.value.tzinfo == timezone.utc
 
 
 def test_parse_datetime_literal_with_timezone_negative():
@@ -127,8 +129,9 @@ def test_parse_datetime_literal_with_timezone_negative():
     assert isinstance(ast, Compare)
     assert isinstance(ast.right, DateTimeLiteral)
     # 18:30:00-08:00 should be converted to 02:30:00 (next day) UTC
-    assert ast.right.value == datetime(2024, 12, 2, 2, 30, 0)
-    assert ast.right.value.tzinfo is None
+    assert ast.right.value == datetime(2024, 12, 2, 2, 30, 0, tzinfo=timezone.utc)
+    assert ast.right.value.tzinfo is not None
+    assert ast.right.value.tzinfo == timezone.utc
 
 
 def test_parse_datetime_literal_various_operators():
@@ -211,7 +214,7 @@ def test_parse_datetime_date_only_string():
     
     # Should be accepted and parsed as midnight
     assert isinstance(ast.right, DateTimeLiteral)
-    assert ast.right.value == datetime(2024, 1, 31, 0, 0, 0)
+    assert ast.right.value == datetime(2024, 1, 31, 0, 0, 0, tzinfo=timezone.utc)
 
 
 def test_parse_date_invalid_format():
@@ -234,9 +237,9 @@ def test_evaluate_datetime_equality():
     """Test evaluating datetime equality comparison."""
     # Create mock index with datetime values
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card2'},
-        datetime(2024, 3, 10, 8, 15, 0): {'card3'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card2'},
+        datetime(2024, 3, 10, 8, 15, 0, tzinfo=timezone.utc): {'card3'}
     })
     
     field_indices = {'CREATED_DATE': created_index}
@@ -251,9 +254,9 @@ def test_evaluate_datetime_equality():
 def test_evaluate_datetime_less_than():
     """Test evaluating datetime < comparison."""
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card2'},
-        datetime(2024, 3, 10, 8, 15, 0): {'card3'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card2'},
+        datetime(2024, 3, 10, 8, 15, 0, tzinfo=timezone.utc): {'card3'}
     })
     
     field_indices = {'CREATED_DATE': created_index}
@@ -269,9 +272,9 @@ def test_evaluate_datetime_less_than():
 def test_evaluate_datetime_less_than_or_equal():
     """Test evaluating datetime <= comparison."""
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card2'},
-        datetime(2024, 3, 10, 8, 15, 0): {'card3'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card2'},
+        datetime(2024, 3, 10, 8, 15, 0, tzinfo=timezone.utc): {'card3'}
     })
     
     field_indices = {'CREATED_DATE': created_index}
@@ -287,9 +290,9 @@ def test_evaluate_datetime_less_than_or_equal():
 def test_evaluate_datetime_greater_than():
     """Test evaluating datetime > comparison."""
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card2'},
-        datetime(2024, 3, 10, 8, 15, 0): {'card3'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card2'},
+        datetime(2024, 3, 10, 8, 15, 0, tzinfo=timezone.utc): {'card3'}
     })
     
     field_indices = {'CREATED_DATE': created_index}
@@ -305,9 +308,9 @@ def test_evaluate_datetime_greater_than():
 def test_evaluate_datetime_greater_than_or_equal():
     """Test evaluating datetime >= comparison."""
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card2'},
-        datetime(2024, 3, 10, 8, 15, 0): {'card3'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card2'},
+        datetime(2024, 3, 10, 8, 15, 0, tzinfo=timezone.utc): {'card3'}
     })
     
     field_indices = {'CREATED_DATE': created_index}
@@ -375,9 +378,9 @@ def test_evaluate_datetime_with_timezone_conversion():
     """Test that timezone-aware queries are properly converted to UTC for comparison."""
     # Index contains UTC datetime values
     event_index = MockNotecardIndex('EVENT_TIME', {
-        datetime(2024, 6, 15, 5, 0, 0): {'card1'},  # 05:00 UTC
-        datetime(2024, 6, 15, 10, 0, 0): {'card2'}, # 10:00 UTC
-        datetime(2024, 6, 15, 15, 0, 0): {'card3'}  # 15:00 UTC
+        datetime(2024, 6, 15, 5, 0, 0, tzinfo=timezone.utc): {'card1'},  # 05:00 UTC
+        datetime(2024, 6, 15, 10, 0, 0, tzinfo=timezone.utc): {'card2'}, # 10:00 UTC
+        datetime(2024, 6, 15, 15, 0, 0, tzinfo=timezone.utc): {'card3'}  # 15:00 UTC
     })
     
     field_indices = {'EVENT_TIME': event_index}
@@ -393,10 +396,10 @@ def test_evaluate_datetime_with_timezone_conversion():
 def test_evaluate_datetime_range_query():
     """Test evaluating datetime range query with AND."""
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card2'},
-        datetime(2024, 3, 10, 8, 15, 0): {'card3'},
-        datetime(2024, 4, 5, 16, 45, 0): {'card4'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card2'},
+        datetime(2024, 3, 10, 8, 15, 0, tzinfo=timezone.utc): {'card3'},
+        datetime(2024, 4, 5, 16, 45, 0, tzinfo=timezone.utc): {'card4'}
     })
     
     field_indices = {'CREATED_DATE': created_index}
@@ -435,8 +438,8 @@ def test_evaluate_date_range_query():
 def test_evaluate_mixed_datetime_and_string():
     """Test query with both datetime and string comparisons."""
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1', 'card2'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card3'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1', 'card2'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card3'}
     })
     
     status_index = MockNotecardIndex('STATUS', {
@@ -461,8 +464,8 @@ def test_evaluate_mixed_datetime_and_string():
 def test_evaluate_no_matches():
     """Test temporal query with no matches."""
     created_index = MockNotecardIndex('CREATED_DATE', {
-        datetime(2024, 1, 15, 10, 0, 0): {'card1'},
-        datetime(2024, 2, 20, 14, 30, 0): {'card2'}
+        datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc): {'card1'},
+        datetime(2024, 2, 20, 14, 30, 0, tzinfo=timezone.utc): {'card2'}
     })
     
     field_indices = {'CREATED_DATE': created_index}
@@ -494,7 +497,7 @@ def test_datetime_literal_milliseconds():
     ast = parse_query("timestamp = '2024-01-31 15:30:00.123456'::timestamp")
     
     assert isinstance(ast.right, DateTimeLiteral)
-    assert ast.right.value == datetime(2024, 1, 31, 15, 30, 0, 123456)
+    assert ast.right.value == datetime(2024, 1, 31, 15, 30, 0, 123456, tzinfo=timezone.utc)
 
 
 def test_datetime_literal_midnight():
@@ -502,7 +505,7 @@ def test_datetime_literal_midnight():
     ast = parse_query("timestamp = '2024-01-01 00:00:00'::timestamp")
     
     assert isinstance(ast.right, DateTimeLiteral)
-    assert ast.right.value == datetime(2024, 1, 1, 0, 0, 0)
+    assert ast.right.value == datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
 
 def test_date_literal_leap_year():
@@ -564,7 +567,7 @@ def test_parse_now_keyword():
     assert isinstance(ast.right, DateTimeLiteral)
     assert isinstance(ast.right.value, datetime)
     # Verify it's close to current time (within 1 second)
-    time_diff = (datetime.now(timezone.utc).replace(tzinfo=None) - ast.right.value).total_seconds()
+    time_diff = (datetime.now(timezone.utc) - ast.right.value).total_seconds()
     assert abs(time_diff) < 1
 
 
@@ -625,14 +628,15 @@ def test_today_in_complex_query():
 
 
 def test_now_returns_utc_time():
-    """Test that 'now'::timestamp returns UTC time (naive datetime)."""
+    """Test that 'now'::timestamp returns UTC time (timezone-aware)."""
     ast = parse_query("timestamp = 'now'::timestamp")
     
-    # Should be a naive datetime (no timezone info)
-    assert ast.right.value.tzinfo is None
+    # Should be a timezone-aware datetime with UTC timezone
+    assert ast.right.value.tzinfo is not None
+    assert ast.right.value.tzinfo == timezone.utc
     
     # Should be close to current UTC time
-    utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    utc_now = datetime.now(timezone.utc)
     time_diff = (utc_now - ast.right.value).total_seconds()
     assert abs(time_diff) < 1
 
@@ -654,9 +658,9 @@ def test_now_and_today_case_insensitive():
 
 def test_evaluate_query_with_now():
     """Test evaluating queries with 'now' keyword."""
-    # Create a mock index with past and future datetimes
-    past_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
-    future_dt = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)
+    # Create a mock index with past and future datetimes (timezone-aware)
+    past_dt = datetime.now(timezone.utc) - timedelta(hours=1)
+    future_dt = datetime.now(timezone.utc) + timedelta(hours=1)
     
     dt_index = MockNotecardIndex('TIMESTAMP', {
         past_dt: {'card_past'},

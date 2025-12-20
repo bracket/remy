@@ -708,3 +708,73 @@ def test_evaluate_query_with_today():
     ast = parse_query("date_field > 'today'::date")
     result = evaluate_query(ast, field_indices)
     assert result == {'card_tomorrow'}
+
+
+def test_unbounded_upper_range_datetime_queries():
+    """Test that unbounded upper range queries work correctly (issue reported by user)."""
+    # Create a mock index with datetime values spanning multiple days
+    dt1 = datetime(2025, 12, 5, 10, 0, 0, tzinfo=timezone.utc)
+    dt2 = datetime(2025, 12, 12, 14, 30, 0, tzinfo=timezone.utc)
+    dt3 = datetime(2025, 12, 15, 8, 15, 0, tzinfo=timezone.utc)
+    dt4 = datetime(2025, 12, 20, 16, 45, 0, tzinfo=timezone.utc)
+    
+    created_index = MockNotecardIndex('CREATED', {
+        dt1: {'card1'},
+        dt2: {'card2'},
+        dt3: {'card3'},
+        dt4: {'card4'}
+    })
+    
+    field_indices = {'CREATED': created_index}
+    
+    # Test > operator with unbounded upper range
+    ast = parse_query("created > '2025-12-10 00:00:00'::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card2', 'card3', 'card4'}, f"Expected cards 2,3,4 but got {result}"
+    
+    # Test >= operator with unbounded upper range
+    ast = parse_query("created >= '2025-12-12 14:30:00'::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card2', 'card3', 'card4'}, f"Expected cards 2,3,4 but got {result}"
+    
+    # Test >= operator with unbounded upper range (different boundary)
+    ast = parse_query("created >= '2025-12-15 08:15:00'::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}, f"Expected cards 3,4 but got {result}"
+    
+    # Test > operator with value that doesn't exist
+    ast = parse_query("created > '2025-12-13 00:00:00'::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}, f"Expected cards 3,4 but got {result}"
+
+
+def test_unbounded_lower_range_datetime_queries():
+    """Test that unbounded lower range queries work correctly."""
+    dt1 = datetime(2025, 12, 5, 10, 0, 0, tzinfo=timezone.utc)
+    dt2 = datetime(2025, 12, 12, 14, 30, 0, tzinfo=timezone.utc)
+    dt3 = datetime(2025, 12, 15, 8, 15, 0, tzinfo=timezone.utc)
+    dt4 = datetime(2025, 12, 20, 16, 45, 0, tzinfo=timezone.utc)
+    
+    created_index = MockNotecardIndex('CREATED', {
+        dt1: {'card1'},
+        dt2: {'card2'},
+        dt3: {'card3'},
+        dt4: {'card4'}
+    })
+    
+    field_indices = {'CREATED': created_index}
+    
+    # Test < operator with unbounded lower range
+    ast = parse_query("created < '2025-12-13 00:00:00'::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card2'}, f"Expected cards 1,2 but got {result}"
+    
+    # Test <= operator with unbounded lower range
+    ast = parse_query("created <= '2025-12-12 14:30:00'::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card2'}, f"Expected cards 1,2 but got {result}"
+    
+    # Test <= operator with unbounded lower range (different boundary)
+    ast = parse_query("created <= '2025-12-15 08:15:00'::timestamp")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card2', 'card3'}, f"Expected cards 1,2,3 but got {result}"

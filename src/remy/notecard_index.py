@@ -99,8 +99,6 @@ class NotecardIndex(object):
 
         if high is not null:
             high_key = (id(type(high)), high)
-        elif low is not null:
-            high_key = low_key
         else:
             high_key = (sys.maxsize, )
 

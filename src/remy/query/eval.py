@@ -22,7 +22,8 @@ Example usage:
 from remy.exceptions import RemyError
 from remy.notecard_index import null
 from remy.query.ast_nodes import (
-    ASTNode, Literal, Identifier, Compare, In, And, Or, Not
+    ASTNode, Literal, Identifier, Compare, In, And, Or, Not,
+    DateTimeLiteral, DateLiteral
 )
 from typing import TYPE_CHECKING, Dict, Set
 
@@ -122,8 +123,8 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             f"got {type(ast.left).__name__}"
         )
 
-    # Right side must be a Literal (value to match)
-    if not isinstance(ast.right, Literal):
+    # Right side must be a Literal (value to match) or temporal literal
+    if not isinstance(ast.right, (Literal, DateTimeLiteral, DateLiteral)):
         raise RemyError(
             f"Right operand of comparison must be a Literal (value), "
             f"got {type(ast.right).__name__}"

@@ -6,11 +6,13 @@ into an abstract syntax tree (AST) for later evaluation.
 """
 
 from lark import Transformer, exceptions as lark_exceptions
+from datetime import datetime, date, timezone
 
 from remy.exceptions import RemyError
 from remy.query.grammar import get_parser
 from remy.query.ast_nodes import (
-    Literal, Identifier, Compare, In, And, Or, Not
+    Literal, Identifier, Compare, In, And, Or, Not,
+    DateTimeLiteral, DateLiteral
 )
 
 
@@ -85,6 +87,60 @@ class QueryTransformer(Transformer):
         """Transform list literal."""
         # Filter out None values (from optional empty lists)
         return [item for item in args if item is not None]
+
+    def datetime_literal(self, args):
+        """Transform datetime literal (e.g., '2024-01-31 15:30:00'::timestamp or 'now'::timestamp)."""
+        # Get the string token
+        token = args[0]
+        # Remove quotes from the string
+        datetime_str = str(token)[1:-1]
+        
+        # Check if this is the special "now" keyword (case-insensitive)
+        if datetime_str.lower() == 'now':
+            # Return current UTC datetime (timezone-aware)
+            dt = datetime.now(timezone.utc)
+            return DateTimeLiteral(dt)
+        
+        try:
+            # Try to parse datetime - fromisoformat handles timezone automatically
+            dt = datetime.fromisoformat(datetime_str)
+            # If timezone-aware, convert to UTC
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc)
+            else:
+                # If no timezone specified, treat as UTC
+                dt = dt.replace(tzinfo=timezone.utc)
+            return DateTimeLiteral(dt)
+        except ValueError as e:
+            raise RemyError(
+                f"Invalid datetime format: '{datetime_str}'. "
+                f"Expected ISO format 'YYYY-MM-DD HH:MM:SS' with optional timezone. "
+                f"Error: {str(e)}"
+            )
+
+    def date_literal(self, args):
+        """Transform date literal (e.g., '2024-01-31'::date or 'today'::date)."""
+        # Get the string token
+        token = args[0]
+        # Remove quotes from the string
+        date_str = str(token)[1:-1]
+        
+        # Check if this is the special "today" keyword (case-insensitive)
+        if date_str.lower() == 'today':
+            # Return current UTC date
+            dt = date.today()
+            return DateLiteral(dt)
+        
+        try:
+            # Parse date in ISO format
+            dt = date.fromisoformat(date_str)
+            return DateLiteral(dt)
+        except ValueError as e:
+            raise RemyError(
+                f"Invalid date format: '{date_str}'. "
+                f"Expected ISO format 'YYYY-MM-DD'. "
+                f"Error: {str(e)}"
+            )
 
 
 def parse_query(query):

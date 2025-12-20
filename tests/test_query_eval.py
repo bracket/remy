@@ -247,13 +247,84 @@ def test_evaluate_complex_and_or():
 
 
 def test_evaluate_unsupported_operator_not_equal():
-    """Test that != operator raises RemyError."""
+    """Test that != operator raises RemyError (not yet supported)."""
     field_indices = {}
 
     ast = Compare('!=', Identifier('status'), Literal('active'))
 
     with pytest.raises(RemyError, match="not yet supported"):
         evaluate_query(ast, field_indices)
+
+
+def test_evaluate_operator_less_than():
+    """Test < operator with numeric comparisons."""
+    # Create a mock index with numeric values
+    age_index = MockNotecardIndex('AGE', {
+        15: {'card1'},
+        18: {'card2'},
+        25: {'card3'},
+        30: {'card4'}
+    })
+
+    field_indices = {'AGE': age_index}
+
+    # Query: age < 18 (should match age=15)
+    ast = Compare('<', Identifier('age'), Literal(18))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card1'}
+
+
+def test_evaluate_operator_greater_than():
+    """Test > operator with numeric comparisons."""
+    age_index = MockNotecardIndex('AGE', {
+        15: {'card1'},
+        18: {'card2'},
+        25: {'card3'},
+        30: {'card4'}
+    })
+
+    field_indices = {'AGE': age_index}
+
+    # Query: age > 18 (should match age=25 and age=30)
+    ast = Compare('>', Identifier('age'), Literal(18))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card3', 'card4'}
+
+
+def test_evaluate_operator_less_equal():
+    """Test <= operator with numeric comparisons."""
+    count_index = MockNotecardIndex('COUNT', {
+        5: {'card1'},
+        10: {'card2'},
+        15: {'card3'}
+    })
+
+    field_indices = {'COUNT': count_index}
+
+    # Query: count <= 10 (should match count=5 and count=10)
+    ast = Compare('<=', Identifier('count'), Literal(10))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card1', 'card2'}
+
+
+def test_evaluate_operator_greater_equal():
+    """Test >= operator with numeric comparisons."""
+    score_index = MockNotecardIndex('SCORE', {
+        85: {'card1'},
+        90: {'card2'},
+        95: {'card3'}
+    })
+
+    field_indices = {'SCORE': score_index}
+
+    # Query: score >= 90 (should match score=90 and score=95)
+    ast = Compare('>=', Identifier('score'), Literal(90))
+    result = evaluate_query(ast, field_indices)
+
+    assert result == {'card2', 'card3'}
 
 
 def test_evaluate_not_operator_not_supported():

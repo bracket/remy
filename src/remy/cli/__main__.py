@@ -28,8 +28,10 @@ def get_sort_key_for_card(card, cache, order_by_key):
         order_by_key: Key to sort by ('id' or field name)
     
     Returns:
-        Tuple for sorting: (primary_sort_value, primary_label)
-        For missing/unparseable values, returns (None, primary_label) which sorts last
+        Tuple for sorting:
+        - For 'id': (primary_label, primary_label)
+        - For field with value: (0, min_value, primary_label)
+        - For missing/unparseable values: (1, None, primary_label) which sorts last
     """
     primary_label = card.primary_label
     

@@ -18,6 +18,53 @@ def format_notecards_raw(cards):
     return "".join(format_notecard_raw(card) for card in cards)
 
 
+def get_sort_key_for_card(card, cache, order_by_key):
+    """
+    Build a sort key for a notecard.
+    
+    Args:
+        card: Notecard instance
+        cache: NotecardCache instance
+        order_by_key: Key to sort by ('id' or field name)
+    
+    Returns:
+        Tuple for sorting:
+        - For 'id': (primary_label, primary_label)
+        - For field with value: (0, min_value, primary_label)
+        - For missing/unparseable values: (1, None, primary_label) which sorts last
+    """
+    primary_label = card.primary_label
+    
+    if order_by_key == 'id':
+        # Sort by primary label itself
+        return (primary_label, primary_label)
+    
+    # Sort by a field value
+    field_name_upper = order_by_key.upper()
+    
+    try:
+        # Get the field index
+        field_index = cache.field_index(field_name_upper)
+        
+        # Get values for this card's primary label from the inverse index
+        values = field_index.inverse.get(primary_label, [])
+        
+        if not values:
+            # No value for this field - sort last
+            # Use (1, None, primary_label) where 1 > 0 ensures it comes after real values
+            return (1, None, primary_label)
+        
+        # Use the minimum value for sorting (if multiple values exist)
+        min_value = min(values)
+        
+        # Return (0, value, primary_label) - 0 ensures real values come before None
+        return (0, min_value, primary_label)
+        
+    except (KeyError, AttributeError):
+        # Field doesn't exist in config or other error - sort last
+        return (1, None, primary_label)
+
+
 def execute_query_filter(cache, query_string):
     """
     Execute a query filter and return matching notecards.
@@ -93,14 +140,24 @@ def main(ctx, cache):
               type=click.Choice(['raw', 'json'], case_sensitive=False),
               default='raw',
               help='Output format (default: raw)')
+@click.option('--order-by', 'order_by_key', default='id',
+              help='Sort notecards by key: "id" for primary label (default), or any field name')
+@click.option('--reverse', 'reverse_order', is_flag=True,
+              help='Reverse the sort order')
 @click.pass_context
-def query(ctx, query_expr, where_clause, show_all, output_format):
+def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, reverse_order):
     """Query and filter notecards.
+
+    Results are returned in deterministic order. By default, notecards are sorted
+    by primary label (id). Use --order-by to sort by a metadata field instead.
+    Use --reverse to reverse the sort order.
 
     Examples:
       remy --cache /path/to/notes query --all
       remy --cache /path/to/notes query "tag = 'inbox'"
       remy --cache /path/to/notes query --where "tag = 'inbox'"
+      remy --cache /path/to/notes query --all --order-by priority
+      remy --cache /path/to/notes query --all --order-by created --reverse
     """
     cache = ctx.obj['cache']
 
@@ -140,7 +197,7 @@ def query(ctx, query_expr, where_clause, show_all, output_format):
         unique_cards = []
 
     # Sort by primary label for consistent output
-    unique_cards.sort(key=lambda c: c.primary_label)
+    unique_cards.sort(key=lambda c: get_sort_key_for_card(c, cache, order_by_key), reverse=reverse_order)
 
     # Format and output
     if output_format.lower() == 'json':

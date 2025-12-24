@@ -12,6 +12,8 @@ def add_timedelta_to_date(dt: date, td: Timedelta) -> date | datetime:
     Add a Timedelta to a date value with calendar-aware arithmetic.
     
     - For sub-day units (hours), treat date as 00:00:00 UTC timestamp and return timestamp
+      NOTE: The date is always treated as midnight UTC, regardless of the system's local timezone.
+      This ensures consistent behavior across different environments.
     - For day/month/year units, return a date
     - Month/year arithmetic is calendar-aware (end-of-month capping)
     
@@ -68,6 +70,9 @@ def add_timedelta_to_datetime(dt: datetime, td: Timedelta) -> datetime:
 def subtract_timedelta_from_date(dt: date, td: Timedelta) -> date | datetime:
     """
     Subtract a Timedelta from a date value with calendar-aware arithmetic.
+    
+    NOTE: For sub-day units (hours), the date is treated as midnight UTC when converting
+    to a timestamp. This ensures consistent behavior across different environments.
     
     Args:
         dt: Date value to subtract from

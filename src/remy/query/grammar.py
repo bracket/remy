@@ -22,14 +22,19 @@ QUERY_GRAMMAR = r"""
              | comparison
 
     ?comparison: in_expr
-               | primary COMP_OP primary -> compare
-
-    ?in_expr: primary _IN list_literal -> in_op
-            | primary
+               | additive COMP_OP additive -> compare
+    
+    ?in_expr: additive _IN list_literal -> in_op
+            | additive
+    
+    ?additive: primary
+             | additive "+" primary  -> add_op
+             | additive "-" primary  -> sub_op
 
     ?primary: identifier
             | datetime_literal
             | date_literal
+            | timedelta_literal
             | literal
             | "(" or_expr ")"
 
@@ -37,6 +42,7 @@ QUERY_GRAMMAR = r"""
     literal: STRING | NUMBER | TRUE | FALSE | NULL
     datetime_literal: STRING DATETIME_CAST
     date_literal: STRING DATE_CAST
+    timedelta_literal: STRING TIMEDELTA_CAST
     list_literal: "[" [literal ("," literal)*] "]"
 
     _AND.2: /\band\b/i
@@ -56,6 +62,7 @@ QUERY_GRAMMAR = r"""
 
     DATETIME_CAST: "::timestamp"
     DATE_CAST: "::date"
+    TIMEDELTA_CAST: "::timedelta"
 
     NUMBER: SIGNED_NUMBER
 

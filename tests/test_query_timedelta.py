@@ -4,13 +4,93 @@ import pytest
 from datetime import datetime, date, timezone
 
 from remy.exceptions import RemyError, InvalidComparison
+from remy.notecard_index import null
 from remy.query.parser import parse_query
 from remy.query.ast_nodes import (
     Compare, Identifier, DateTimeLiteral, DateLiteral, 
     TimedeltaLiteral, Timedelta, BinaryOp
 )
 from remy.query.eval import evaluate_query
-from tests.test_query_temporal import MockNotecardIndex
+
+
+# Sentinel value to distinguish "no value" from "None value"
+_null = null  # Use the same null sentinel as NotecardIndex
+
+
+class MockNotecardIndex:
+    """
+    Mock NotecardIndex for testing temporal queries.
+    
+    This class simulates the NotecardIndex interface for testing purposes,
+    storing a simple mapping of values to sets of labels.
+    """
+
+    def __init__(self, field_name, value_to_labels):
+        """
+        Initialize mock index.
+
+        Args:
+            field_name: Name of the field (will be uppercased)
+            value_to_labels: Dict mapping values to sets of labels
+        """
+        self.field_name = field_name.upper()
+        self.value_to_labels = value_to_labels
+
+    def find(self, low=_null, high=_null, snap=None):
+        """
+        Mock implementation of NotecardIndex.find().
+
+        Supports both equality matching (low == high) and range queries.
+        For range queries, returns all values in [low, high] inclusive.
+
+        Args:
+            low: Lower bound value (defaults to sentinel _null)
+            high: Upper bound value (defaults to sentinel _null)
+            snap: Snapping mode (ignored in mock)
+
+        Yields:
+            Tuples of (value, label) for matching entries
+        """
+        # For range queries, sort values (filtering out incomparable types)
+        try:
+            all_values = sorted(self.value_to_labels.keys())
+        except TypeError:
+            # Can't sort mixed types, just iterate without ordering
+            all_values = list(self.value_to_labels.keys())
+        
+        # Determine actual bounds
+        # If both low and high are null, return everything
+        # If low is null but high is set, return everything up to high
+        # If high is null but low is set, return everything from low onwards
+        # If both are set and equal, it's an exact match
+        # If both are set and different, it's a range query
+        
+        for value in all_values:
+            # First check for exact match (handles None and other non-comparable values)
+            if low is not _null and high is not _null and low == high:
+                # Exact match case
+                if value == low:
+                    for label in sorted(self.value_to_labels[value]):
+                        yield (value, label)
+                continue
+            
+            # Range query - check if value is in range
+            try:
+                # Check lower bound
+                if low is not _null and value < low:
+                    continue
+                    
+                # Check upper bound
+                if high is not _null and value > high:
+                    continue
+            except TypeError:
+                # Can't compare types, skip this value
+                continue
+                
+            # Yield all labels for this value
+            if value in self.value_to_labels:
+                for label in sorted(self.value_to_labels[value]):
+                    yield (value, label)
 
 
 # ============================================================================

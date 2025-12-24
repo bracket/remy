@@ -82,9 +82,83 @@ class Timedelta(ASTNode):
     
     Unlike Python's datetime.timedelta which is limited to days/seconds/microseconds,
     this class can represent months and years for calendar-aware arithmetic.
+    
+    Supports operator overloading for addition and subtraction with date/datetime objects.
     """
     value: int
     unit: TypeLiteral['days', 'hours', 'months', 'years']
+    
+    def __add__(self, other):
+        """Add this timedelta to a date or datetime."""
+        from datetime import datetime, date, timezone, timedelta as dt_timedelta
+        from dateutil.relativedelta import relativedelta
+        
+        if isinstance(other, datetime):
+            # Add to datetime
+            if self.unit == 'hours':
+                return other + dt_timedelta(hours=self.value)
+            elif self.unit == 'days':
+                return other + dt_timedelta(days=self.value)
+            elif self.unit == 'months':
+                return other + relativedelta(months=self.value)
+            elif self.unit == 'years':
+                return other + relativedelta(years=self.value)
+            else:
+                raise ValueError(f"Unknown timedelta unit: {self.unit}")
+        elif isinstance(other, date):
+            # Add to date
+            if self.unit == 'hours':
+                # Convert date to timestamp at midnight UTC, then add hours
+                dt_timestamp = datetime.combine(other, datetime.min.time(), tzinfo=timezone.utc)
+                return dt_timestamp + dt_timedelta(hours=self.value)
+            elif self.unit == 'days':
+                return other + dt_timedelta(days=self.value)
+            elif self.unit == 'months':
+                return other + relativedelta(months=self.value)
+            elif self.unit == 'years':
+                return other + relativedelta(years=self.value)
+            else:
+                raise ValueError(f"Unknown timedelta unit: {self.unit}")
+        else:
+            return NotImplemented
+    
+    def __radd__(self, other):
+        """Support commutative addition: date + timedelta."""
+        return self.__add__(other)
+    
+    def __rsub__(self, other):
+        """Support subtraction: date - timedelta (negate and add)."""
+        from datetime import datetime, date, timezone, timedelta as dt_timedelta
+        from dateutil.relativedelta import relativedelta
+        
+        if isinstance(other, datetime):
+            # Subtract from datetime
+            if self.unit == 'hours':
+                return other - dt_timedelta(hours=self.value)
+            elif self.unit == 'days':
+                return other - dt_timedelta(days=self.value)
+            elif self.unit == 'months':
+                return other - relativedelta(months=self.value)
+            elif self.unit == 'years':
+                return other - relativedelta(years=self.value)
+            else:
+                raise ValueError(f"Unknown timedelta unit: {self.unit}")
+        elif isinstance(other, date):
+            # Subtract from date
+            if self.unit == 'hours':
+                # Convert date to timestamp at midnight UTC, then subtract hours
+                dt_timestamp = datetime.combine(other, datetime.min.time(), tzinfo=timezone.utc)
+                return dt_timestamp - dt_timedelta(hours=self.value)
+            elif self.unit == 'days':
+                return other - dt_timedelta(days=self.value)
+            elif self.unit == 'months':
+                return other - relativedelta(months=self.value)
+            elif self.unit == 'years':
+                return other - relativedelta(years=self.value)
+            else:
+                raise ValueError(f"Unknown timedelta unit: {self.unit}")
+        else:
+            return NotImplemented
 
 
 @dataclass

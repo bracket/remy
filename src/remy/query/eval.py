@@ -25,10 +25,6 @@ from remy.query.ast_nodes import (
     ASTNode, Literal, Identifier, Compare, In, And, Or, Not,
     DateTimeLiteral, DateLiteral, TimedeltaLiteral, BinaryOp, Timedelta
 )
-from remy.query.util import (
-    add_timedelta_to_date, add_timedelta_to_datetime,
-    subtract_timedelta_from_date, subtract_timedelta_from_datetime
-)
 from typing import TYPE_CHECKING, Dict, Set
 
 if TYPE_CHECKING:
@@ -149,15 +145,11 @@ def _evaluate_binary_op(ast: BinaryOp):
     # Handle addition
     if ast.operator == '+':
         # date + timedelta or timestamp + timedelta
-        if isinstance(left_value, date) and not isinstance(left_value, datetime) and isinstance(right_value, Timedelta):
-            return add_timedelta_to_date(left_value, right_value)
-        elif isinstance(left_value, datetime) and isinstance(right_value, Timedelta):
-            return add_timedelta_to_datetime(left_value, right_value)
+        if isinstance(left_value, date) and isinstance(right_value, Timedelta):
+            return left_value + right_value
         # timedelta + date or timedelta + timestamp (commutative)
-        elif isinstance(left_value, Timedelta) and isinstance(right_value, date) and not isinstance(right_value, datetime):
-            return add_timedelta_to_date(right_value, left_value)
-        elif isinstance(left_value, Timedelta) and isinstance(right_value, datetime):
-            return add_timedelta_to_datetime(right_value, left_value)
+        elif isinstance(left_value, Timedelta) and isinstance(right_value, date):
+            return right_value + left_value
         else:
             raise RemyError(
                 f"Invalid operands for addition: {type(left_value).__name__} + {type(right_value).__name__}. "
@@ -167,10 +159,8 @@ def _evaluate_binary_op(ast: BinaryOp):
     # Handle subtraction
     elif ast.operator == '-':
         # date - timedelta or timestamp - timedelta
-        if isinstance(left_value, date) and not isinstance(left_value, datetime) and isinstance(right_value, Timedelta):
-            return subtract_timedelta_from_date(left_value, right_value)
-        elif isinstance(left_value, datetime) and isinstance(right_value, Timedelta):
-            return subtract_timedelta_from_datetime(left_value, right_value)
+        if isinstance(left_value, date) and isinstance(right_value, Timedelta):
+            return left_value - right_value
         else:
             raise RemyError(
                 f"Invalid operands for subtraction: {type(left_value).__name__} - {type(right_value).__name__}. "

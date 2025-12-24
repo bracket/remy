@@ -12,7 +12,7 @@ from remy.exceptions import RemyError
 from remy.query.grammar import get_parser
 from remy.query.ast_nodes import (
     Literal, Identifier, Compare, In, And, Or, Not,
-    DateTimeLiteral, DateLiteral
+    DateTimeLiteral, DateLiteral, Timedelta, TimedeltaLiteral, BinaryOp
 )
 
 
@@ -48,6 +48,16 @@ class QueryTransformer(Transformer):
         """Transform IN expression."""
         left, values = args
         return In(left, values)
+    
+    def add_op(self, args):
+        """Transform addition expression."""
+        left, right = args
+        return BinaryOp('+', left, right)
+    
+    def sub_op(self, args):
+        """Transform subtraction expression."""
+        left, right = args
+        return BinaryOp('-', left, right)
 
     def identifier(self, args):
         """Transform identifier."""
@@ -141,6 +151,50 @@ class QueryTransformer(Transformer):
                 f"Expected ISO format 'YYYY-MM-DD'. "
                 f"Error: {str(e)}"
             )
+    
+    def timedelta_literal(self, args):
+        """
+        Transform timedelta literal (e.g., '2 days'::timedelta, '1 month'::timedelta).
+        
+        Supports units: day/days, hour/hours, month/months, year/years
+        """
+        import re
+        
+        # Get the string token
+        token = args[0]
+        # Remove quotes from the string
+        timedelta_str = str(token)[1:-1].strip()
+        
+        # Parse the timedelta string: "<number> <unit>"
+        # Support both singular and plural forms
+        pattern = r'^(\d+)\s+(day|days|hour|hours|month|months|year|years)$'
+        match = re.match(pattern, timedelta_str, re.IGNORECASE)
+        
+        if not match:
+            raise RemyError(
+                f"Invalid timedelta format: '{timedelta_str}'. "
+                f"Expected format: '<number> <unit>' where unit is day(s), hour(s), month(s), or year(s). "
+                f"Examples: '2 days', '1 month', '3 hours', '1 year'"
+            )
+        
+        value = int(match.group(1))
+        unit_str = match.group(2).lower()
+        
+        # Normalize to plural form for consistent storage
+        unit_map = {
+            'day': 'days',
+            'days': 'days',
+            'hour': 'hours',
+            'hours': 'hours',
+            'month': 'months',
+            'months': 'months',
+            'year': 'years',
+            'years': 'years'
+        }
+        
+        unit = unit_map[unit_str]
+        
+        return TimedeltaLiteral(Timedelta(value, unit))
 
 
 def parse_query(query):

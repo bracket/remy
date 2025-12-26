@@ -186,7 +186,7 @@ def test_parse_timedelta_invalid_format():
 def test_parse_timedelta_invalid_unit():
     """Test that invalid timedelta unit raises RemyError."""
     with pytest.raises(RemyError, match="Invalid timedelta format"):
-        parse_query("field = '2 weeks'::timedelta")
+        parse_query("field = '2 fortnights'::timedelta")
 
 
 def test_parse_timedelta_missing_number():

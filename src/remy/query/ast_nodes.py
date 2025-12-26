@@ -86,7 +86,7 @@ class Timedelta(ASTNode):
     Supports operator overloading for addition and subtraction with date/datetime objects.
     """
     value: int
-    unit: TypeLiteral['days', 'hours', 'months', 'years']
+    unit: TypeLiteral['days', 'hours', 'minutes', 'seconds', 'weeks', 'months', 'years']
     
     def __add__(self, other):
         """Add this timedelta to a date or datetime."""
@@ -95,10 +95,16 @@ class Timedelta(ASTNode):
         
         if isinstance(other, datetime):
             # Add to datetime
-            if self.unit == 'hours':
+            if self.unit == 'seconds':
+                return other + dt_timedelta(seconds=self.value)
+            elif self.unit == 'minutes':
+                return other + dt_timedelta(minutes=self.value)
+            elif self.unit == 'hours':
                 return other + dt_timedelta(hours=self.value)
             elif self.unit == 'days':
                 return other + dt_timedelta(days=self.value)
+            elif self.unit == 'weeks':
+                return other + dt_timedelta(weeks=self.value)
             elif self.unit == 'months':
                 return other + relativedelta(months=self.value)
             elif self.unit == 'years':
@@ -107,12 +113,20 @@ class Timedelta(ASTNode):
                 raise ValueError(f"Unknown timedelta unit: {self.unit}")
         elif isinstance(other, date):
             # Add to date
-            if self.unit == 'hours':
-                # Convert date to timestamp at midnight UTC, then add hours
+            # Sub-day units (seconds, minutes, hours) convert date to timestamp
+            if self.unit in ('seconds', 'minutes', 'hours'):
+                # Convert date to timestamp at midnight UTC, then add
                 dt_timestamp = datetime.combine(other, datetime.min.time(), tzinfo=timezone.utc)
-                return dt_timestamp + dt_timedelta(hours=self.value)
+                if self.unit == 'seconds':
+                    return dt_timestamp + dt_timedelta(seconds=self.value)
+                elif self.unit == 'minutes':
+                    return dt_timestamp + dt_timedelta(minutes=self.value)
+                else:  # hours
+                    return dt_timestamp + dt_timedelta(hours=self.value)
             elif self.unit == 'days':
                 return other + dt_timedelta(days=self.value)
+            elif self.unit == 'weeks':
+                return other + dt_timedelta(weeks=self.value)
             elif self.unit == 'months':
                 return other + relativedelta(months=self.value)
             elif self.unit == 'years':
@@ -133,10 +147,16 @@ class Timedelta(ASTNode):
         
         if isinstance(other, datetime):
             # Subtract from datetime
-            if self.unit == 'hours':
+            if self.unit == 'seconds':
+                return other - dt_timedelta(seconds=self.value)
+            elif self.unit == 'minutes':
+                return other - dt_timedelta(minutes=self.value)
+            elif self.unit == 'hours':
                 return other - dt_timedelta(hours=self.value)
             elif self.unit == 'days':
                 return other - dt_timedelta(days=self.value)
+            elif self.unit == 'weeks':
+                return other - dt_timedelta(weeks=self.value)
             elif self.unit == 'months':
                 return other - relativedelta(months=self.value)
             elif self.unit == 'years':
@@ -145,12 +165,20 @@ class Timedelta(ASTNode):
                 raise ValueError(f"Unknown timedelta unit: {self.unit}")
         elif isinstance(other, date):
             # Subtract from date
-            if self.unit == 'hours':
-                # Convert date to timestamp at midnight UTC, then subtract hours
+            # Sub-day units (seconds, minutes, hours) convert date to timestamp
+            if self.unit in ('seconds', 'minutes', 'hours'):
+                # Convert date to timestamp at midnight UTC, then subtract
                 dt_timestamp = datetime.combine(other, datetime.min.time(), tzinfo=timezone.utc)
-                return dt_timestamp - dt_timedelta(hours=self.value)
+                if self.unit == 'seconds':
+                    return dt_timestamp - dt_timedelta(seconds=self.value)
+                elif self.unit == 'minutes':
+                    return dt_timestamp - dt_timedelta(minutes=self.value)
+                else:  # hours
+                    return dt_timestamp - dt_timedelta(hours=self.value)
             elif self.unit == 'days':
                 return other - dt_timedelta(days=self.value)
+            elif self.unit == 'weeks':
+                return other - dt_timedelta(weeks=self.value)
             elif self.unit == 'months':
                 return other - relativedelta(months=self.value)
             elif self.unit == 'years':

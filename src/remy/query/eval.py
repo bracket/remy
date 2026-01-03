@@ -19,11 +19,11 @@ Example usage:
     >>> matching_labels = evaluate_query(ast, field_indices)
 """
 
-from remy.exceptions import RemyError
+from remy.exceptions import RemyError, InvalidComparison
 from remy.notecard_index import null
 from remy.query.ast_nodes import (
     ASTNode, Literal, Identifier, Compare, In, And, Or, Not,
-    DateTimeLiteral, DateLiteral
+    DateTimeLiteral, DateLiteral, TimedeltaLiteral, BinaryOp, Timedelta
 )
 from typing import TYPE_CHECKING, Dict, Set
 
@@ -95,6 +95,82 @@ def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> S
         raise RemyError(f"Unsupported AST node type: {type(ast).__name__}")
 
 
+def _evaluate_binary_op(ast: BinaryOp):
+    """
+    Evaluate a binary arithmetic operation (+ or -) between date/timestamp and timedelta.
+    
+    Args:
+        ast: BinaryOp AST node
+        
+    Returns:
+        Evaluated date or datetime value
+        
+    Raises:
+        RemyError: If operands are invalid or operation is not supported
+        InvalidComparison: If attempting to compare timedeltas
+    """
+    from datetime import datetime, date
+    
+    # Extract values from left and right operands
+    if isinstance(ast.left, DateLiteral):
+        left_value = ast.left.value
+    elif isinstance(ast.left, DateTimeLiteral):
+        left_value = ast.left.value
+    elif isinstance(ast.left, TimedeltaLiteral):
+        left_value = ast.left.value
+    elif isinstance(ast.left, BinaryOp):
+        # Recursive evaluation for nested arithmetic
+        left_value = _evaluate_binary_op(ast.left)
+    else:
+        raise RemyError(
+            f"Left operand of arithmetic must be a date, timestamp, or timedelta literal, "
+            f"got {type(ast.left).__name__}"
+        )
+    
+    if isinstance(ast.right, DateLiteral):
+        right_value = ast.right.value
+    elif isinstance(ast.right, DateTimeLiteral):
+        right_value = ast.right.value
+    elif isinstance(ast.right, TimedeltaLiteral):
+        right_value = ast.right.value
+    elif isinstance(ast.right, BinaryOp):
+        # Recursive evaluation for nested arithmetic
+        right_value = _evaluate_binary_op(ast.right)
+    else:
+        raise RemyError(
+            f"Right operand of arithmetic must be a date, timestamp, or timedelta literal, "
+            f"got {type(ast.right).__name__}"
+        )
+    
+    # Handle addition
+    if ast.operator == '+':
+        # date + timedelta or timestamp + timedelta
+        if isinstance(left_value, date) and isinstance(right_value, Timedelta):
+            return left_value + right_value
+        # timedelta + date or timedelta + timestamp (commutative)
+        elif isinstance(left_value, Timedelta) and isinstance(right_value, date):
+            return right_value + left_value
+        else:
+            raise RemyError(
+                f"Invalid operands for addition: {type(left_value).__name__} + {type(right_value).__name__}. "
+                f"Only date/timestamp + timedelta is supported."
+            )
+    
+    # Handle subtraction
+    elif ast.operator == '-':
+        # date - timedelta or timestamp - timedelta
+        if isinstance(left_value, date) and isinstance(right_value, Timedelta):
+            return left_value - right_value
+        else:
+            raise RemyError(
+                f"Invalid operands for subtraction: {type(left_value).__name__} - {type(right_value).__name__}. "
+                f"Only date/timestamp - timedelta is supported."
+            )
+    
+    else:
+        raise RemyError(f"Unsupported binary operator: {ast.operator}")
+
+
 def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:
     """
     Evaluate a comparison operation.
@@ -123,15 +199,29 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             f"got {type(ast.left).__name__}"
         )
 
-    # Right side must be a Literal (value to match) or temporal literal
-    if not isinstance(ast.right, (Literal, DateTimeLiteral, DateLiteral)):
+    # Right side must be a Literal, temporal literal, or BinaryOp
+    # If it's a BinaryOp, evaluate it first to get a value
+    if isinstance(ast.right, BinaryOp):
+        value = _evaluate_binary_op(ast.right)
+    elif isinstance(ast.right, TimedeltaLiteral):
+        # Timedelta literals can't be compared directly
+        value = ast.right.value
+    elif isinstance(ast.right, (Literal, DateTimeLiteral, DateLiteral)):
+        value = ast.right.value
+    else:
         raise RemyError(
-            f"Right operand of comparison must be a Literal (value), "
+            f"Right operand of comparison must be a Literal, temporal literal, or arithmetic expression, "
             f"got {type(ast.right).__name__}"
         )
 
     field_name = ast.left.name.upper()
-    value = ast.right.value
+
+    # Check if the value is a Timedelta - we don't support timedelta comparisons
+    if isinstance(value, Timedelta):
+        raise InvalidComparison(
+            "Comparing timedeltas is not supported. "
+            "Timedelta values can only be used in arithmetic with dates/timestamps."
+        )
 
     # If the field doesn't exist in indices, return empty set
     # (fields are dynamic and optional)

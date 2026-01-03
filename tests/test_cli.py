@@ -618,7 +618,8 @@ def test_query_limit_with_order_by():
     
     # Should return the first 2 according to priority sort order
     # task2 and task5 both have priority 1, and should come first
-    assert set(notecards) == {'task2', 'task5'}
+    # Within the same priority, they're sorted by primary label
+    assert notecards == ['task2', 'task5']
 
 
 def test_query_limit_with_reverse():

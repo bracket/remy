@@ -15,6 +15,7 @@ dependencies = [
     "lark",
     "sortedcontainers",
     "click",
+    "python-dateutil",
 ]
 
 [project.optional-dependencies]

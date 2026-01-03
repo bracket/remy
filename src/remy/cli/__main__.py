@@ -249,7 +249,7 @@ def edit(ctx, label):
             sys.exit(1)
 
         source_url = card.source_url
-        source_path = card.source_url.path
+        source_path = source_url.path
         line_no = int(source_url.fragment) + 1
     else:
         now = datetime.now(UTC)

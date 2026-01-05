@@ -528,3 +528,239 @@ def test_query_order_by_with_filtered_results():
     task2_idx = notecards.index('task2')
     task1_idx = notecards.index('task1')
     assert task2_idx < task1_idx
+
+
+def test_query_limit_basic():
+    """Test that --limit returns exactly N results when N < total results."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--limit', '3'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 3 notecards
+    assert len(notecards) == 3
+
+
+def test_query_limit_short_form():
+    """Test that -l short form works for limit."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '-l', '2'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 2 notecards
+    assert len(notecards) == 2
+
+
+def test_query_limit_greater_than_results():
+    """Test that --limit returns all results when N >= total results."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Filter to inbox tasks (only 2)
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--limit', '100'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return all inbox tasks (2 total)
+    assert len(notecards) == 2
+    assert set(notecards) == {'task1', 'task2'}
+
+
+def test_query_limit_one():
+    """Test that --limit=1 returns exactly one result."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--limit', '1'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 1 notecard
+    assert len(notecards) == 1
+
+
+def test_query_limit_with_order_by():
+    """Test that --limit works with --order-by."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--order-by', 'priority', '--limit', '2'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 2 notecards
+    assert len(notecards) == 2
+    
+    # Should return the first 2 according to priority sort order
+    # task2 and task5 both have priority 1, and should come first
+    # Within the same priority, they're sorted by primary label
+    assert notecards == ['task2', 'task5']
+
+
+def test_query_limit_with_reverse():
+    """Test that --limit works with --reverse."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Get the full reversed list first
+    result_full = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--reverse'])
+    import re
+    notecards_full = re.findall(r'^NOTECARD (\S+)', result_full.output, re.MULTILINE)
+    
+    # Now get limited reversed list
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--reverse', '--limit', '3'])
+    
+    assert result.exit_code == 0
+    
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 3 notecards
+    assert len(notecards) == 3
+    
+    # Should be the first 3 from the reversed list
+    assert notecards == notecards_full[:3]
+
+
+def test_query_limit_with_order_by_and_reverse():
+    """Test that --limit works with both --order-by and --reverse."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--order-by', 'priority', '--reverse', '--limit', '2'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 2 notecards
+    assert len(notecards) == 2
+    
+    # With priority sorting reversed, we get the last 2 from the reversed priority order
+    # The important thing is that limit works correctly with both order-by and reverse
+
+
+def test_query_order_by_earliest_with_limit_one():
+    """Test that --order-by priority --limit=1 returns the first (lowest priority) result."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Filter to tasks with priority field and get the one with lowest priority
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "priority > 0", '--order-by', 'priority', '--limit', '1'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 1 notecard
+    assert len(notecards) == 1
+    
+    # Should be one of the lowest priority tasks (priority 1)
+    # task2 or task5 both have priority 1, but task2 comes first alphabetically
+    assert notecards[0] == 'task2'
+
+
+def test_query_order_by_latest_with_limit_one():
+    """Test that --order-by priority --reverse --limit=1 returns the last (highest priority) result."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Filter to tasks with priority field and get the one with highest priority
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "priority > 0", '--order-by', 'priority', '--reverse', '--limit', '1'])
+    
+    assert result.exit_code == 0
+    
+    # Extract notecard primary labels from output
+    import re
+    notecards = re.findall(r'^NOTECARD (\S+)', result.output, re.MULTILINE)
+    
+    # Should return exactly 1 notecard
+    assert len(notecards) == 1
+    
+    # Should be one of the highest priority tasks (priority 3)
+    # task1 or task4 both have priority 3, but task4 comes last alphabetically  
+    # When reversed, the highest priority comes first, and among ties, reverse alphabetical
+    assert notecards[0] == 'task4'
+
+
+def test_query_limit_zero_error():
+    """Test that --limit=0 produces an error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--limit', '0'])
+    
+    # Should fail with non-zero exit code
+    assert result.exit_code != 0
+    
+    # Should display error message about invalid value
+    assert 'Invalid value' in result.output or 'out of range' in result.output.lower()
+
+
+def test_query_limit_negative_error():
+    """Test that negative limit produces an error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--limit', '-5'])
+    
+    # Should fail with non-zero exit code
+    assert result.exit_code != 0
+    
+    # Should display error message about invalid value
+    assert 'Invalid value' in result.output or 'out of range' in result.output.lower()
+
+
+def test_query_limit_non_numeric_error():
+    """Test that non-numeric limit produces an error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--limit', 'abc'])
+    
+    # Should fail with non-zero exit code
+    assert result.exit_code != 0
+    
+    # Should display error message about invalid value
+    assert 'Invalid value' in result.output or 'not a valid integer' in result.output.lower()
+
+
+def test_query_help_includes_limit():
+    """Test that query --help shows the --limit option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--help'])
+
+    assert result.exit_code == 0
+    assert '--limit' in result.output
+    assert '-l' in result.output
+    assert 'Limit the number of results' in result.output or 'limit' in result.output.lower()

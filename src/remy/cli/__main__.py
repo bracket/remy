@@ -140,6 +140,8 @@ def main(ctx, cache):
               type=click.Choice(['raw', 'json'], case_sensitive=False),
               default='raw',
               help='Output format (default: raw)')
+@click.option('--pretty-print', 'pretty_print', is_flag=True,
+              help='Pretty-print JSON output (only applies to --format=json)')
 @click.option('--order-by', 'order_by_key', default='id',
               help='Sort notecards by key: "id" for primary label (default), or any field name')
 @click.option('--reverse', 'reverse_order', is_flag=True,
@@ -147,7 +149,7 @@ def main(ctx, cache):
 @click.option('--limit', '-l', 'limit', type=click.IntRange(min=1),
               help='Limit the number of results returned (applied after sorting)')
 @click.pass_context
-def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, reverse_order, limit):
+def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, order_by_key, reverse_order, limit):
     """Query and filter notecards.
 
     Results are returned in deterministic order. By default, notecards are sorted
@@ -209,10 +211,20 @@ def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, 
 
     # Format and output
     if output_format.lower() == 'json':
-        raise NotImplementedError(
-            "JSON output format is not yet implemented. "
-            "Please use '--format=raw' (the default) for now."
-        )
+        import json
+        # Collect full text of each notecard
+        notecard_texts = []
+        for card in unique_cards:
+            full_text = format_notecard_raw(card)
+            notecard_texts.append(full_text)
+        
+        # Serialize to JSON
+        if pretty_print:
+            output = json.dumps(notecard_texts, ensure_ascii=False, indent=2)
+        else:
+            output = json.dumps(notecard_texts, ensure_ascii=False)
+        
+        print(output)
     elif output_format.lower() == 'raw':
         output = format_notecards_raw(unique_cards)
         print(output, end='')

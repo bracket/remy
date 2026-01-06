@@ -25,3 +25,5 @@ in `issues/issue-template.md`.
 3. The output included in the issue markdown file must not contain any path
 references to any files in the `scratch/` or `issues/` directories.  These directories are
 not available to to the coding agent.
+
+4. Use `git` to determine any repository information needed when communicating with GitHub.

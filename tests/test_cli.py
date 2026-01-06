@@ -101,16 +101,297 @@ def test_query_format_raw():
     assert 'weasel\n' in result.output
 
 
-def test_query_format_json_not_implemented():
-    """Test that --format=json raises NotImplementedError."""
+def test_query_format_json_basic():
+    """Test basic JSON output format."""
     from remy.cli.__main__ import main
+    import json
 
     runner = CliRunner()
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=json'])
 
-    assert result.exit_code != 0
-    assert isinstance(result.exception, NotImplementedError)
-    assert 'JSON output format is not yet implemented' in str(result.exception)
+    assert result.exit_code == 0
+    
+    # Parse JSON output
+    data = json.loads(result.output)
+    
+    # Should be a list
+    assert isinstance(data, list)
+    
+    # Should have multiple notecards
+    assert len(data) > 0
+    
+    # Each element should be a string containing notecard text
+    for item in data:
+        assert isinstance(item, str)
+        assert item.startswith('NOTECARD ')
+
+
+def test_query_format_json_multiple_notecards():
+    """Test JSON output with multiple notecards."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=json'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    
+    # Should have multiple notecards
+    assert len(data) >= 2
+    
+    # Verify some expected notecards are present
+    notecard_texts = ''.join(data)
+    assert 'NOTECARD 1 weasel' in notecard_texts
+    assert 'NOTECARD 2 beaver' in notecard_texts
+
+
+def test_query_format_json_single_notecard():
+    """Test JSON output with single notecard."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'done'", '--format=json'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    
+    # Should have exactly one notecard
+    assert len(data) == 1
+    
+    # Verify it's the expected notecard
+    assert 'NOTECARD task3 done-task' in data[0]
+    assert 'Completed task' in data[0]
+
+
+def test_query_format_json_empty_results():
+    """Test JSON output with no results (empty array)."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'nonexistent'", '--format=json'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    
+    # Should be an empty array
+    assert data == []
+
+
+def test_query_format_json_case_insensitive():
+    """Test that format option is case-insensitive."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    
+    # Test various case combinations
+    for format_str in ['json', 'JSON', 'Json', 'JsOn']:
+        result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', f'--format={format_str}'])
+        
+        assert result.exit_code == 0
+        
+        # Should parse as valid JSON
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+
+
+def test_query_format_json_pretty_print():
+    """Test pretty-print flag produces indented output."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    
+    # Get compact output (default)
+    result_compact = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=json'])
+    
+    # Get pretty-printed output
+    result_pretty = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=json', '--pretty-print'])
+    
+    assert result_compact.exit_code == 0
+    assert result_pretty.exit_code == 0
+    
+    # Both should parse as valid JSON
+    data_compact = json.loads(result_compact.output)
+    data_pretty = json.loads(result_pretty.output)
+    
+    # Should contain same data
+    assert data_compact == data_pretty
+    
+    # Pretty output should have more lines (due to indentation)
+    compact_lines = result_compact.output.count('\n')
+    pretty_lines = result_pretty.output.count('\n')
+    assert pretty_lines > compact_lines
+    
+    # Pretty output should contain indentation
+    assert '  ' in result_pretty.output  # 2-space indent
+
+
+def test_query_format_json_special_characters():
+    """Test JSON output with special characters in notecard text."""
+    from remy.cli.__main__ import main
+    from click.testing import CliRunner
+    import json
+    from pathlib import Path
+    
+    runner = CliRunner()
+    
+    # Create a temporary notecard file with special characters
+    with runner.isolated_filesystem():
+        test_file = Path('special.ntc')
+        test_file.write_text('''NOTECARD special-chars
+:TAG: test
+Text with "quotes" and 'apostrophes'
+Text with backslash \\ character
+Text with newline in content
+Text with tab\tcharacter
+''')
+        
+        result = runner.invoke(main, ['--cache', str(test_file.parent), 'query', '--all', '--format=json'])
+        
+        assert result.exit_code == 0
+        
+        # Should parse as valid JSON
+        data = json.loads(result.output)
+        
+        assert len(data) == 1
+        notecard_text = data[0]
+        
+        # Verify special characters are preserved
+        assert '"quotes"' in notecard_text
+        assert "'apostrophes'" in notecard_text
+        assert '\\' in notecard_text
+        assert '\t' in notecard_text
+
+
+def test_query_format_json_unicode_characters():
+    """Test JSON output with Unicode characters."""
+    from remy.cli.__main__ import main
+    from click.testing import CliRunner
+    import json
+    from pathlib import Path
+    
+    runner = CliRunner()
+    
+    # Create a temporary notecard file with Unicode characters
+    with runner.isolated_filesystem():
+        test_file = Path('unicode.ntc')
+        test_file.write_text('''NOTECARD unicode-test
+:TAG: test
+Text with emoji 🎉 and symbols ✓
+Text with accents: café, naïve, résumé
+Text with Japanese: こんにちは
+Text with Chinese: 你好
+Text with Arabic: مرحبا
+''', encoding='utf-8')
+        
+        result = runner.invoke(main, ['--cache', str(test_file.parent), 'query', '--all', '--format=json'])
+        
+        assert result.exit_code == 0
+        
+        # Should parse as valid JSON
+        data = json.loads(result.output)
+        
+        assert len(data) == 1
+        notecard_text = data[0]
+        
+        # Verify Unicode characters are preserved
+        assert '🎉' in notecard_text
+        assert '✓' in notecard_text
+        assert 'café' in notecard_text
+        assert 'naïve' in notecard_text
+        assert 'こんにちは' in notecard_text
+        assert '你好' in notecard_text
+        assert 'مرحبا' in notecard_text
+
+
+def test_query_format_json_with_order_by():
+    """Test JSON output respects --order-by flag."""
+    from remy.cli.__main__ import main
+    import json
+    import re
+
+    runner = CliRunner()
+    
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=json', '--order-by', 'priority'])
+    
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    
+    # Extract primary labels from JSON output
+    labels = []
+    for notecard_text in data:
+        match = re.search(r'NOTECARD (\S+)', notecard_text)
+        if match:
+            labels.append(match.group(1))
+    
+    # Verify ordering (priority 1 before priority 2 before priority 3, then no-priority cards)
+    task2_idx = labels.index('task2') if 'task2' in labels else -1
+    task3_idx = labels.index('task3') if 'task3' in labels else -1
+    task1_idx = labels.index('task1') if 'task1' in labels else -1
+    
+    if task2_idx >= 0 and task3_idx >= 0:
+        assert task2_idx < task3_idx  # priority 1 before priority 2
+    if task3_idx >= 0 and task1_idx >= 0:
+        assert task3_idx < task1_idx  # priority 2 before priority 3
+
+
+def test_query_format_json_with_limit():
+    """Test JSON output respects --limit flag."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format=json', '--limit', '3'])
+    
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    
+    # Should have exactly 3 notecards
+    assert len(data) == 3
+
+
+def test_query_format_json_full_notecard_text():
+    """Test that JSON output contains complete notecard text with fields and content."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--format=json'])
+    
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    
+    # Find the task1 notecard
+    task1_text = None
+    for notecard_text in data:
+        if 'NOTECARD task1 inbox-task' in notecard_text:
+            task1_text = notecard_text
+            break
+    
+    assert task1_text is not None
+    
+    # Verify it contains the NOTECARD line
+    assert 'NOTECARD task1 inbox-task' in task1_text
+    
+    # Verify it contains field data
+    assert ':TAG: inbox' in task1_text
+    assert ':PRIORITY: 3' in task1_text
+    assert ':STATUS: active' in task1_text
+    
+    # Verify it contains content
+    assert 'Task in inbox with priority 3' in task1_text
 
 
 def test_query_output_reparseable():

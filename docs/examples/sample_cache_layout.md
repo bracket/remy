@@ -2,14 +2,15 @@
 
 Remy caches don't require any explicit structure, but some can be useful.  By
 default remy will search the CACHE_DIR and look for files with the `.ntc`
-extension in non-hidden directories to search for notecards.  It will also look for a `.remy_config.py`
+extension in non-hidden directories to search for notecards.  It will also look for a `.remy/config.py`
 file, which is described in `docs/remy_config.md`.
 
 Here is an example of a cache layout:
 
 ```
 cache/
-├── .remy_config.py                          # Configuration file for remy
+├── .remy/
+│   └── config.py                            # Configuration file for remy
 ├── main.ntc                                 # Main notecard at top-level for easy access
 │
 ├── .support/                                # Support directory for reference materials

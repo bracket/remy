@@ -18,6 +18,153 @@ def format_notecards_raw(cards):
     return "".join(format_notecard_raw(card) for card in cards)
 
 
+def parse_fields_option(fields_str):
+    """
+    Parse the --fields option string into a list of field names.
+    
+    Args:
+        fields_str: Comma-separated field names
+        
+    Returns:
+        List of field names (preserving original case)
+    """
+    if not fields_str:
+        return []
+    return [f.strip() for f in fields_str.split(',') if f.strip()]
+
+
+def extract_field_values(card, field_names):
+    """
+    Extract requested field values from a notecard.
+    
+    Args:
+        card: Notecard instance
+        field_names: List of field names to extract (case-insensitive)
+        
+    Returns:
+        Dictionary mapping field names (original case) to lists of values
+        Special pseudo-fields:
+        - @primary-label: The primary label
+        - @label: All labels
+        - @title or @first-block: First block of content
+    """
+    from remy.ast.parse import parse_content
+    from remy.ast import Field
+    
+    result = {}
+    
+    for field_name in field_names:
+        # Handle special pseudo-fields (case-insensitive comparison)
+        field_name_lower = field_name.lower()
+        
+        if field_name_lower == '@primary-label':
+            result[field_name] = [card.primary_label]
+        elif field_name_lower == '@label':
+            result[field_name] = list(card.labels)
+        elif field_name_lower in ('@title', '@first-block'):
+            first_block = card.first_block
+            result[field_name] = [first_block] if first_block else []
+        else:
+            # Extract regular metadata fields (case-insensitive)
+            field_name_upper = field_name.upper()
+            values = []
+            
+            for node in parse_content(card.content):
+                if isinstance(node, Field) and node.label.upper() == field_name_upper:
+                    values.append(node.value)
+            
+            result[field_name] = values
+    
+    return result
+
+
+def csv_quote(value):
+    """
+    Quote a value for CSV output if necessary.
+    
+    Args:
+        value: String value to quote
+        
+    Returns:
+        Quoted string if it contains special characters, otherwise the original
+    """
+    if value is None:
+        return ''
+    
+    value_str = str(value)
+    
+    # Check if quoting is needed (contains comma, newline, or quote)
+    if ',' in value_str or '\n' in value_str or '"' in value_str:
+        # Escape quotes by doubling them
+        escaped = value_str.replace('"', '""')
+        return f'"{escaped}"'
+    
+    return value_str
+
+
+def format_notecards_fields_raw(cards, field_names):
+    """
+    Format notecards with selected fields in raw CSV format.
+    
+    Outputs comma-separated field values with CSV-style quoting.
+    Uses cross-product behavior for multiple field values.
+    
+    Args:
+        cards: List of Notecard instances
+        field_names: List of field names to extract
+        
+    Returns:
+        String with CSV-formatted output, one line per combination
+    """
+    import itertools
+    
+    lines = []
+    
+    for card in cards:
+        field_values = extract_field_values(card, field_names)
+        
+        # Get lists of values for each field
+        value_lists = []
+        for field_name in field_names:
+            values = field_values.get(field_name, [])
+            # If no values, use empty string for cross-product
+            if not values:
+                value_lists.append([''])
+            else:
+                value_lists.append(values)
+        
+        # Generate cross-product of all field values
+        for value_combination in itertools.product(*value_lists):
+            # Quote each value and join with commas
+            quoted_values = [csv_quote(v) for v in value_combination]
+            lines.append(','.join(quoted_values))
+    
+    return '\n'.join(lines) + ('\n' if lines else '')
+
+
+def format_notecards_fields_json(cards, field_names):
+    """
+    Format notecards with selected fields in JSON format.
+    
+    Returns an array of objects, where each object represents a notecard
+    with field names as keys and arrays of values as values.
+    
+    Args:
+        cards: List of Notecard instances
+        field_names: List of field names to extract
+        
+    Returns:
+        List of dictionaries suitable for JSON serialization
+    """
+    result = []
+    
+    for card in cards:
+        field_values = extract_field_values(card, field_names)
+        result.append(field_values)
+    
+    return result
+
+
 def get_sort_key_for_card(card, cache, order_by_key):
     """
     Build a sort key for a notecard.
@@ -148,8 +295,10 @@ def main(ctx, cache):
               help='Reverse the sort order')
 @click.option('--limit', '-l', 'limit', type=click.IntRange(min=1),
               help='Limit the number of results returned (applied after sorting)')
+@click.option('--fields', 'fields_option',
+              help='Comma-separated list of field names to extract (supports @primary-label, @label, @title/@first-block)')
 @click.pass_context
-def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, order_by_key, reverse_order, limit):
+def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, order_by_key, reverse_order, limit, fields_option):
     """Query and filter notecards.
 
     Results are returned in deterministic order. By default, notecards are sorted
@@ -209,25 +358,47 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
     if limit is not None:
         unique_cards = unique_cards[:limit]
 
+    # Parse fields if specified
+    field_names = parse_fields_option(fields_option) if fields_option else None
+
     # Format and output
-    if output_format.lower() == 'json':
-        import json
-        # Collect full text of each notecard
-        notecard_texts = []
-        for card in unique_cards:
-            full_text = format_notecard_raw(card)
-            notecard_texts.append(full_text)
-        
-        # Serialize to JSON
-        if pretty_print:
-            output = json.dumps(notecard_texts, ensure_ascii=False, indent=2)
+    if field_names:
+        # Field selection mode
+        if output_format.lower() == 'json':
+            import json
+            # Use field-specific JSON formatting
+            result = format_notecards_fields_json(unique_cards, field_names)
+            
+            if pretty_print:
+                output = json.dumps(result, ensure_ascii=False, indent=2)
+            else:
+                output = json.dumps(result, ensure_ascii=False)
+            
+            print(output)
         else:
-            output = json.dumps(notecard_texts, ensure_ascii=False)
-        
-        print(output)
-    elif output_format.lower() == 'raw':
-        output = format_notecards_raw(unique_cards)
-        print(output, end='')
+            # Use field-specific raw (CSV) formatting
+            output = format_notecards_fields_raw(unique_cards, field_names)
+            print(output, end='')
+    else:
+        # Standard full notecard output
+        if output_format.lower() == 'json':
+            import json
+            # Collect full text of each notecard
+            notecard_texts = []
+            for card in unique_cards:
+                full_text = format_notecard_raw(card)
+                notecard_texts.append(full_text)
+            
+            # Serialize to JSON
+            if pretty_print:
+                output = json.dumps(notecard_texts, ensure_ascii=False, indent=2)
+            else:
+                output = json.dumps(notecard_texts, ensure_ascii=False)
+            
+            print(output)
+        elif output_format.lower() == 'raw':
+            output = format_notecards_raw(unique_cards)
+            print(output, end='')
 
 
 @main.command()

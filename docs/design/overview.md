@@ -214,7 +214,7 @@ cards = tag_index.find('python')
 **Design decisions**:
 - **Lazy loading**: Indexes are built on first access
 - **Memoization**: Expensive computations are cached using `@property` pattern
-- **Configurable parsing**: Field parsers defined in `.remy_config.py`
+- **Configurable parsing**: Field parsers defined in `.remy/config.py`
 
 #### 4. Field Indexing (`notecard_index.py`)
 
@@ -232,7 +232,7 @@ Uses `sortedcontainers.SortedSet` for:
 - **Range queries**: Find all cards with timestamp between two dates
 - **Ordered iteration**: Traverse cards by field value
 
-**Configurable Parsers**: Each field type can have a custom parser (defined in `.remy_config.py`):
+**Configurable Parsers**: Each field type can have a custom parser (defined in `.remy/config.py`):
 - `tags_parser`: Split comma-separated tags into tuple
 - `timestamp_parser`: Parse ISO 8601 timestamps
 - Custom parsers for domain-specific fields
@@ -357,18 +357,18 @@ async function get_card(label: string) {
 
 ## Configuration System
 
-### `.remy_config.py`
+### `.remy/config.py`
 
 The configuration file allows customization of notecard behavior:
 
-**Location**: Must be at the root of the notecard directory
+**Location**: Must be in the `.remy` directory at the root of the notecard directory (`.remy/config.py`)
 
 **Purpose**:
 - Define field parsers for custom metadata types
 - Configure how fields are indexed
 - Extend system behavior without modifying core code
 
-**Example** (`docs/examples/remy_config.py`):
+**Example** (`docs/examples/config.py`):
 ```python
 def tags_parser(field):
     return tuple(f.strip().lower() for f in field.split(','))
@@ -517,7 +517,7 @@ index.find(low='2024-01-01', high='2024-12-31')
    - Special handling for `note://` references
 
 6. **Configuration**
-   - `.remy_config.py` support
+   - `.remy/config.py` support
    - Custom field parsers
    - Dynamic loading
 
@@ -856,5 +856,5 @@ This design enables both simple use cases (editing files directly) and advanced 
 
 - Repository: https://github.com/bracket/remy
 - Configuration docs: [docs/remy_config.md](../remy_config.md)
-- Example config: [docs/examples/remy_config.py](../examples/remy_config.py)
+- Example config: [docs/examples/config.py](../examples/config.py)
 - Test fixtures: `tests/data/test_notes/`

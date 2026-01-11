@@ -21,11 +21,19 @@ class NotecardCache(object):
     def config_module(self):
         import importlib.machinery
         import importlib.util
+        from pathlib import Path
 
         if self.__config_module is not None:
             return self.__config_module
 
         config_path = self.url.path / '.remy' / 'config.py'
+
+        if not Path(config_path).exists():
+            raise RemyError(
+                f"Configuration file not found at '{config_path}'. "
+                f"Please create a '.remy/config.py' file at the base of your cache directory "
+                f"with a PARSER_BY_FIELD_NAME dictionary to define field parsers."
+            )
 
         loader = importlib.machinery.SourceFileLoader('remy_config', str(config_path))
         spec = importlib.util.spec_from_loader('remy_config', loader )

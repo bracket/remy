@@ -25,7 +25,7 @@ class NotecardCache(object):
         if self.__config_module is not None:
             return self.__config_module
 
-        config_path = self.url.path / '.remy_config.py'
+        config_path = self.url.path / '.remy' / 'config.py'
 
         loader = importlib.machinery.SourceFileLoader('remy_config', str(config_path))
         spec = importlib.util.spec_from_loader('remy_config', loader )

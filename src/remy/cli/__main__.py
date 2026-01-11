@@ -218,5 +218,67 @@ def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, 
         print(output, end='')
 
 
+@main.command()
+@click.argument('label', required=False)
+@click.pass_context
+def edit(ctx, label):
+    """Edit a notecard by label or create a new notecard.
+
+    When LABEL is provided, opens the corresponding notecard in Vim.
+    When no LABEL is provided, creates a new dated notecard file and opens it in Vim.
+
+    Examples:
+      remy --cache /path/to/notes edit task1
+      remy --cache /path/to/notes edit
+    """
+    import os
+    from datetime import datetime, UTC
+    from pathlib import Path
+    from remy.url import URL
+    
+    cache = ctx.obj['cache']
+    cache_url = cache.url
+
+    if cache_url.scheme != 'file':
+        click.echo(
+            f"Error: Unable to open local cache for editing. cache: '{cache_url.geturl()}'",
+            err=True
+        )
+        sys.exit(1)
+
+    if label:
+        card = cache.find_card_by_label(label)
+
+        if not card:
+            click.echo(
+                f"Error: Unable to find card for label in cache. cache: '{cache_url.geturl()}' label: '{label}'",
+                err=True
+            )
+            sys.exit(1)
+
+        source_url = card.source_url
+        source_path = source_url.path
+        line_no = int(source_url.fragment) + 1
+    else:
+        now = datetime.now(UTC)
+        source_path = cache_url.path / f'{now.year:04}/{now.month:02}/{now.day:02}.ntc'
+        line_no = 0
+
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        'vim',
+        str(source_path),
+    ]
+
+    if line_no:
+        command.append(f"+{line_no}")
+        command.append('+normal ztzo')
+    elif source_path.exists():
+        command.append('+normal G')
+
+    os.execvp(command[0], command)
+
+
 if __name__ == '__main__':
     main(auto_envvar_prefix='REMY')

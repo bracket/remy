@@ -144,13 +144,16 @@ def main(ctx, cache):
               help='Sort notecards by key: "id" for primary label (default), or any field name')
 @click.option('--reverse', 'reverse_order', is_flag=True,
               help='Reverse the sort order')
+@click.option('--limit', '-l', 'limit', type=click.IntRange(min=1),
+              help='Limit the number of results returned (applied after sorting)')
 @click.pass_context
-def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, reverse_order):
+def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, reverse_order, limit):
     """Query and filter notecards.
 
     Results are returned in deterministic order. By default, notecards are sorted
     by primary label (id). Use --order-by to sort by a metadata field instead.
-    Use --reverse to reverse the sort order.
+    Use --reverse to reverse the sort order. Use --limit to restrict the number
+    of results returned.
 
     Examples:
       remy --cache /path/to/notes query --all
@@ -158,6 +161,7 @@ def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, 
       remy --cache /path/to/notes query --where "tag = 'inbox'"
       remy --cache /path/to/notes query --all --order-by priority
       remy --cache /path/to/notes query --all --order-by created --reverse
+      remy --cache /path/to/notes query --all --order-by created --limit 1
     """
     cache = ctx.obj['cache']
 
@@ -198,6 +202,10 @@ def query(ctx, query_expr, where_clause, show_all, output_format, order_by_key, 
 
     # Sort by primary label for consistent output
     unique_cards.sort(key=lambda c: get_sort_key_for_card(c, cache, order_by_key), reverse=reverse_order)
+
+    # Apply limit if specified
+    if limit is not None:
+        unique_cards = unique_cards[:limit]
 
     # Format and output
     if output_format.lower() == 'json':

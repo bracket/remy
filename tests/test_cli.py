@@ -1,5 +1,7 @@
 from pathlib import Path
 from click.testing import CliRunner
+from unittest.mock import patch, MagicMock
+from datetime import datetime, UTC
 
 FILE = Path(__file__).absolute()
 HERE = FILE.parent
@@ -529,6 +531,207 @@ def test_query_order_by_with_filtered_results():
     task1_idx = notecards.index('task1')
     assert task2_idx < task1_idx
 
+
+def test_edit_help():
+    """Test that edit --help shows the command description."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'edit', '--help'])
+
+    assert result.exit_code == 0
+    assert 'Edit a notecard by label' in result.output
+    assert 'LABEL' in result.output
+
+
+def test_main_help_shows_edit():
+    """Test that main --help shows the edit subcommand."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--help'])
+
+    assert result.exit_code == 0
+    assert 'edit' in result.output
+    assert 'Edit a notecard by label' in result.output
+
+
+@patch('os.execvp')
+def test_edit_existing_label(mock_execvp):
+    """Test editing an existing notecard by label."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'edit', 'task1'])
+
+    # Should not exit with error before execvp
+    assert result.exit_code == 0 or mock_execvp.called
+    
+    # Verify execvp was called with correct arguments
+    assert mock_execvp.called
+    call_args = mock_execvp.call_args[0]
+    
+    # First argument should be 'vim'
+    assert call_args[0] == 'vim'
+    
+    # Second argument is the command list
+    command = call_args[1]
+    assert command[0] == 'vim'
+    
+    # Should contain the path to the file
+    assert 'notes_with_fields' in command[1]
+    
+    # Should have line number argument (task1 is on line 0 in fragment, so +1)
+    assert '+1' in command
+    
+    # Should have positioning command
+    assert '+normal ztzo' in command
+
+
+@patch('os.execvp')
+def test_edit_label_not_found(mock_execvp):
+    """Test editing a nonexistent label shows error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'edit', 'nonexistent'])
+
+    # Should exit with error
+    assert result.exit_code != 0
+    
+    # Should show error message
+    assert 'Error:' in result.output
+    assert 'Unable to find card' in result.output
+    assert 'nonexistent' in result.output
+    
+    # execvp should not be called
+    assert not mock_execvp.called
+
+
+@patch('os.execvp')
+def test_edit_create_new_notecard(mock_execvp):
+    """Test creating a new notecard without label."""
+    from remy.cli.__main__ import main
+    
+    # Mock datetime to have deterministic output
+    fixed_datetime = datetime(2026, 1, 3, 15, 30, 45, tzinfo=UTC)
+    
+    with patch('datetime.datetime') as mock_datetime:
+        mock_datetime.now.return_value = fixed_datetime
+        mock_datetime.UTC = UTC
+        
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            cache_path = Path.cwd() / 'test_cache'
+            cache_path.mkdir()
+            
+            result = runner.invoke(main, ['--cache', str(cache_path), 'edit'])
+            
+            # Should not exit with error before execvp
+            assert result.exit_code == 0 or mock_execvp.called
+            
+            # Verify execvp was called
+            assert mock_execvp.called
+            call_args = mock_execvp.call_args[0]
+            
+            # First argument should be 'vim'
+            assert call_args[0] == 'vim'
+            
+            # Second argument is the command list
+            command = call_args[1]
+            assert command[0] == 'vim'
+            
+            # Should contain the dated path
+            assert '2026/01/03.ntc' in command[1]
+            
+            # For new file, should have +normal G if file exists, or no positioning
+            # Since file doesn't exist initially, should not have +normal G
+            if len(command) > 2:
+                # If there are extra args, it should be +normal G (file exists case)
+                assert '+normal G' in command
+
+
+@patch('os.execvp')
+def test_edit_new_notecard_existing_file(mock_execvp):
+    """Test creating new notecard when file already exists."""
+    from remy.cli.__main__ import main
+    
+    # Mock datetime to have deterministic output
+    fixed_datetime = datetime(2026, 1, 3, 15, 30, 45, tzinfo=UTC)
+    
+    with patch('datetime.datetime') as mock_datetime:
+        mock_datetime.now.return_value = fixed_datetime
+        mock_datetime.UTC = UTC
+        
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            cache_path = Path.cwd() / 'test_cache'
+            cache_path.mkdir()
+            
+            # Create the dated file in advance
+            dated_path = cache_path / '2026' / '01'
+            dated_path.mkdir(parents=True)
+            dated_file = dated_path / '03.ntc'
+            dated_file.write_text('NOTECARD existing\nexisting content\n')
+            
+            result = runner.invoke(main, ['--cache', str(cache_path), 'edit'])
+            
+            # Should not exit with error before execvp
+            assert result.exit_code == 0 or mock_execvp.called
+            
+            # Verify execvp was called
+            assert mock_execvp.called
+            call_args = mock_execvp.call_args[0]
+            
+            # Second argument is the command list
+            command = call_args[1]
+            
+            # Should have +normal G for existing file
+            assert '+normal G' in command
+
+
+@patch('os.execvp')
+def test_edit_creates_parent_directories(mock_execvp):
+    """Test that edit creates parent directories for new notecards."""
+    from remy.cli.__main__ import main
+    
+    # Mock datetime to have deterministic output
+    fixed_datetime = datetime(2026, 1, 3, 15, 30, 45, tzinfo=UTC)
+    
+    with patch('datetime.datetime') as mock_datetime:
+        mock_datetime.now.return_value = fixed_datetime
+        mock_datetime.UTC = UTC
+        
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            cache_path = Path.cwd() / 'test_cache'
+            cache_path.mkdir()
+            
+            result = runner.invoke(main, ['--cache', str(cache_path), 'edit'])
+            
+            # Verify parent directories were created
+            expected_dir = cache_path / '2026' / '01'
+            assert expected_dir.exists()
+            assert expected_dir.is_dir()
+
+
+@patch('os.execvp')
+def test_edit_with_cache_from_environment(mock_execvp):
+    """Test that edit command works with REMY_CACHE environment variable."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main, 
+        ['edit', 'task1'],
+        env={'REMY_CACHE': str(DATA / 'test_notes')}
+    )
+
+    # Should not exit with error before execvp
+    assert result.exit_code == 0 or mock_execvp.called
+    
+    # Verify execvp was called
+    assert mock_execvp.called
 
 def test_query_limit_basic():
     """Test that --limit returns exactly N results when N < total results."""

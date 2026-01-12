@@ -33,31 +33,29 @@ def parse_fields_option(fields_str):
     return [f.strip() for f in fields_str.split(',') if f.strip()]
 
 
-def extract_field_values(card, field_names):
+def extract_field_values(card, field_names, cache):
     """
     Extract requested field values from a notecard.
     
     Args:
         card: Notecard instance
         field_names: List of field names to extract (case-insensitive)
+        cache: NotecardCache instance for accessing field indices
         
     Returns:
         Dictionary mapping field names (original case) to lists of values
         Special pseudo-fields:
-        - @primary-label: The primary label
+        - @primary-label or @id: The primary label
         - @label: All labels
         - @title or @first-block: First block of content
     """
-    from remy.ast.parse import parse_content
-    from remy.ast import Field
-    
     result = {}
     
     for field_name in field_names:
         # Handle special pseudo-fields (case-insensitive comparison)
         field_name_lower = field_name.lower()
         
-        if field_name_lower == '@primary-label':
+        if field_name_lower in ('@primary-label', '@id'):
             result[field_name] = [card.primary_label]
         elif field_name_lower == '@label':
             result[field_name] = list(card.labels)
@@ -65,15 +63,19 @@ def extract_field_values(card, field_names):
             first_block = card.first_block
             result[field_name] = [first_block] if first_block else []
         else:
-            # Extract regular metadata fields (case-insensitive)
+            # Extract regular metadata fields using field indices (case-insensitive)
+            # This ensures we use the parsed values from the config parsers
             field_name_upper = field_name.upper()
-            values = []
             
-            for node in parse_content(card.content):
-                if isinstance(node, Field) and node.label.upper() == field_name_upper:
-                    values.append(node.value)
-            
-            result[field_name] = values
+            try:
+                # Get the field index which applies user-supplied parsers
+                field_index = cache.field_index(field_name_upper)
+                # Get parsed values for this card's primary label
+                values = field_index.inverse.get(card.primary_label, [])
+                result[field_name] = list(values)
+            except (KeyError, AttributeError):
+                # Field doesn't exist in config - return empty list
+                result[field_name] = []
     
     return result
 
@@ -102,7 +104,7 @@ def csv_quote(value):
     return value_str
 
 
-def format_notecards_fields_raw(cards, field_names):
+def format_notecards_fields_raw(cards, field_names, cache):
     """
     Format notecards with selected fields in raw CSV format.
     
@@ -112,6 +114,7 @@ def format_notecards_fields_raw(cards, field_names):
     Args:
         cards: List of Notecard instances
         field_names: List of field names to extract
+        cache: NotecardCache instance for accessing field indices
         
     Returns:
         String with CSV-formatted output, one line per combination
@@ -121,7 +124,7 @@ def format_notecards_fields_raw(cards, field_names):
     lines = []
     
     for card in cards:
-        field_values = extract_field_values(card, field_names)
+        field_values = extract_field_values(card, field_names, cache)
         
         # Get lists of values for each field
         value_lists = []
@@ -142,7 +145,7 @@ def format_notecards_fields_raw(cards, field_names):
     return '\n'.join(lines) + ('\n' if lines else '')
 
 
-def format_notecards_fields_json(cards, field_names):
+def format_notecards_fields_json(cards, field_names, cache):
     """
     Format notecards with selected fields in JSON format.
     
@@ -152,6 +155,7 @@ def format_notecards_fields_json(cards, field_names):
     Args:
         cards: List of Notecard instances
         field_names: List of field names to extract
+        cache: NotecardCache instance for accessing field indices
         
     Returns:
         List of dictionaries suitable for JSON serialization
@@ -159,7 +163,7 @@ def format_notecards_fields_json(cards, field_names):
     result = []
     
     for card in cards:
-        field_values = extract_field_values(card, field_names)
+        field_values = extract_field_values(card, field_names, cache)
         result.append(field_values)
     
     return result
@@ -367,7 +371,7 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
         if output_format.lower() == 'json':
             import json
             # Use field-specific JSON formatting
-            result = format_notecards_fields_json(unique_cards, field_names)
+            result = format_notecards_fields_json(unique_cards, field_names, cache)
             
             if pretty_print:
                 output = json.dumps(result, ensure_ascii=False, indent=2)
@@ -377,7 +381,7 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
             print(output)
         else:
             # Use field-specific raw (CSV) formatting
-            output = format_notecards_fields_raw(unique_cards, field_names)
+            output = format_notecards_fields_raw(unique_cards, field_names, cache)
             print(output, end='')
     else:
         # Standard full notecard output

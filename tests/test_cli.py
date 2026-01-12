@@ -1412,7 +1412,7 @@ def test_query_fields_json_format():
     task1 = next(item for item in data if 'task1' in item['@primary-label'])
     assert task1['@primary-label'] == ['task1']
     assert task1['tag'] == ['inbox']
-    assert task1['priority'] == ['3']  # Field values are strings
+    assert task1['priority'] == [3]  # Field values are parsed (integer for priority)
 
 
 def test_query_fields_json_format_empty_fields():
@@ -1530,6 +1530,26 @@ def test_query_fields_case_insensitive_pseudo_fields():
     # Field names should be preserved in original case
     assert '@PRIMARY-LABEL' in data[0]
     assert '@LABEL' in data[0]
+
+
+def test_query_fields_pseudo_field_id_alias():
+    """Test @id pseudo-field as an alias for @primary-label."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', '@id,tag', '--format', 'json'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    assert len(data) == 2
+    
+    # Check that @id works like @primary-label
+    for item in data:
+        assert '@id' in item
+        assert len(item['@id']) == 1
+        assert item['@id'][0] in ['task1', 'task2']
 
 
 def test_query_fields_with_filter_and_sort():

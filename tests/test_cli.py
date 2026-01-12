@@ -1645,3 +1645,70 @@ def test_query_fields_preserves_field_name_case():
     # Field names should be in the case specified in --fields
     assert 'TAG' in data[0]
     assert 'Priority' in data[0]
+
+
+def test_query_fields_datetime_serialization():
+    """Test that datetime and date objects are properly serialized to JSON."""
+    from remy.cli.__main__ import main
+    from datetime import datetime, date
+    import json
+
+    runner = CliRunner()
+    
+    with runner.isolated_filesystem():
+        import os
+        os.makedirs('.remy')
+        with open('.remy/config.py', 'w') as f:
+            f.write('''
+from datetime import datetime, date
+
+def datetime_parser(field):
+    """Parse ISO format datetime."""
+    try:
+        return (datetime.fromisoformat(field.strip()),)
+    except:
+        return ()
+
+def date_parser(field):
+    """Parse ISO format date."""
+    try:
+        return (date.fromisoformat(field.strip()),)
+    except:
+        return ()
+
+def simple_parser(field):
+    return (field.strip(),)
+
+PARSER_BY_FIELD_NAME = {
+    'CREATED': datetime_parser,
+    'MODIFIED': date_parser,
+    'TAG': simple_parser,
+}
+''')
+        
+        with open('test.ntc', 'w') as f:
+            f.write('''NOTECARD card1
+:TAG: test
+:CREATED: 2024-01-15T14:30:45
+:MODIFIED: 2024-01-20
+Test card
+''')
+        
+        # Test JSON format - should not raise TypeError
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', '@id,created,modified', '--format', 'json'])
+        
+        assert result.exit_code == 0
+        
+        data = json.loads(result.output)
+        assert len(data) == 1
+        
+        # Verify datetime and date are serialized as ISO format strings
+        assert data[0]['@id'] == ['card1']
+        assert data[0]['created'] == ['2024-01-15T14:30:45']
+        assert data[0]['modified'] == ['2024-01-20']
+        
+        # Test raw format - should also work
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', '@id,created,modified'])
+        
+        assert result.exit_code == 0
+        assert 'card1,2024-01-15T14:30:45,2024-01-20' in result.output

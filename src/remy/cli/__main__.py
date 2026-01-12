@@ -85,14 +85,16 @@ def csv_quote(value):
     Quote a value for CSV output if necessary.
     
     Args:
-        value: String value to quote
+        value: Value to quote (will be converted to string)
         
     Returns:
-        Quoted string if it contains special characters, otherwise the original
+        Quoted string if it contains special characters, otherwise the string value
     """
     if value is None:
         return ''
     
+    # Convert to JSON-serializable format first (handles datetime/date objects)
+    value = make_json_serializable(value)
     value_str = str(value)
     
     # Check if quoting is needed (contains comma, newline, or quote)
@@ -145,6 +147,31 @@ def format_notecards_fields_raw(cards, field_names, cache):
     return '\n'.join(lines) + ('\n' if lines else '')
 
 
+def make_json_serializable(value):
+    """
+    Convert a value to a JSON-serializable format.
+    
+    Handles datetime and date objects by converting them to ISO format strings.
+    
+    Args:
+        value: Any value that might not be JSON serializable
+        
+    Returns:
+        JSON-serializable version of the value
+    """
+    from datetime import datetime, date
+    
+    if isinstance(value, datetime):
+        # Convert datetime to ISO format string with timezone info
+        return value.isoformat()
+    elif isinstance(value, date):
+        # Convert date to ISO format string
+        return value.isoformat()
+    else:
+        # Return the value as-is (strings, numbers, etc.)
+        return value
+
+
 def format_notecards_fields_json(cards, field_names, cache):
     """
     Format notecards with selected fields in JSON format.
@@ -164,7 +191,13 @@ def format_notecards_fields_json(cards, field_names, cache):
     
     for card in cards:
         field_values = extract_field_values(card, field_names, cache)
-        result.append(field_values)
+        
+        # Convert all field values to JSON-serializable format
+        serializable_values = {}
+        for field_name, values in field_values.items():
+            serializable_values[field_name] = [make_json_serializable(v) for v in values]
+        
+        result.append(serializable_values)
     
     return result
 

@@ -247,22 +247,27 @@ def index(ctx):
               help='Output format (default: raw)')
 @click.option('--pretty-print', 'pretty_print', is_flag=True,
               help='Pretty-print JSON output (only applies to --format=json)')
+@click.option('--include-all-fields', 'include_all_fields', is_flag=True,
+              help='Include field names from cards that do not have parsers defined')
 @click.pass_context
-def index_list(ctx, output_format, pretty_print):
+def index_list(ctx, output_format, pretty_print, include_all_fields):
     """List all available field index names.
     
     Lists all field indices configured in the cache's PARSER_BY_FIELD_NAME dictionary.
+    With --include-all-fields, also includes field names found in cards that don't
+    have parsers defined (this scans all cards and may be slower for large caches).
     
     Examples:
       remy --cache /path/to/notes index list
       remy --cache /path/to/notes index list --format json
       remy --cache /path/to/notes index list --format json --pretty-print
+      remy --cache /path/to/notes index list --include-all-fields
     """
     cache = ctx.obj['cache']
     
     try:
         # Get field names from config
-        field_names = list(cache.config_module.PARSER_BY_FIELD_NAME.keys())
+        field_names = set(cache.config_module.PARSER_BY_FIELD_NAME.keys())
     except AttributeError:
         click.echo(
             "Error: Configuration file missing or PARSER_BY_FIELD_NAME not defined.\n"
@@ -271,8 +276,23 @@ def index_list(ctx, output_format, pretty_print):
         )
         sys.exit(1)
     
+    # If requested, also include field names from cards that don't have parsers
+    if include_all_fields:
+        from remy.ast.parse import parse_content
+        from remy.ast import Field
+        
+        for label, card in cache.cards_by_label.items():
+            # Only process each card once (by primary label)
+            if label != card.primary_label:
+                continue
+            
+            # Extract field names from card content
+            for node in parse_content(card.content):
+                if isinstance(node, Field):
+                    field_names.add(node.label.upper())
+    
     # Sort field names for consistent output
-    field_names.sort()
+    field_names = sorted(field_names)
     
     # Format and output
     if output_format.lower() == 'json':

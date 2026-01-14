@@ -525,6 +525,134 @@ def test_index_list_help():
     assert result.exit_code == 0
     assert '--format' in result.output
     assert '--pretty-print' in result.output
+    assert '--include-all-fields' in result.output
+
+
+def test_index_list_include_all_fields():
+    """Test index list with --include-all-fields option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    # Create a test notecard cache with fields that don't have parsers
+    with runner.isolated_filesystem():
+        test_dir = Path('test_unparsed')
+        test_dir.mkdir()
+        config_dir = test_dir / '.remy'
+        config_dir.mkdir()
+        
+        # Create config file with only some parsers
+        config_file = config_dir / 'config.py'
+        config_file.write_text('''
+def simple_parser(field):
+    return (field.strip(),)
+
+PARSER_BY_FIELD_NAME = {
+    'TAG': simple_parser,
+}
+''')
+        
+        # Create notecard file with multiple fields
+        test_file = test_dir / 'test.ntc'
+        test_file.write_text('''NOTECARD test1
+:TAG: value1
+:AUTHOR: John Doe
+:DATE: 2024-01-01
+Content
+
+NOTECARD test2
+:TAG: value2
+:PRIORITY: high
+Content
+''')
+        
+        # Test without --include-all-fields (should only show TAG)
+        result = runner.invoke(main, ['--cache', str(test_dir), 'index', 'list'])
+        assert result.exit_code == 0
+        lines = result.output.strip().split('\n')
+        assert lines == ['TAG']
+        
+        # Test with --include-all-fields (should show all fields)
+        result = runner.invoke(main, ['--cache', str(test_dir), 'index', 'list', '--include-all-fields'])
+        assert result.exit_code == 0
+        lines = result.output.strip().split('\n')
+        assert 'TAG' in lines
+        assert 'AUTHOR' in lines
+        assert 'DATE' in lines
+        assert 'PRIORITY' in lines
+        assert len(lines) == 4
+
+
+def test_index_list_include_all_fields_json():
+    """Test index list with --include-all-fields and JSON format."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    # Create a test notecard cache with fields that don't have parsers
+    with runner.isolated_filesystem():
+        test_dir = Path('test_unparsed')
+        test_dir.mkdir()
+        config_dir = test_dir / '.remy'
+        config_dir.mkdir()
+        
+        # Create config file with only TAG parser
+        config_file = config_dir / 'config.py'
+        config_file.write_text('''
+def simple_parser(field):
+    return (field.strip(),)
+
+PARSER_BY_FIELD_NAME = {
+    'TAG': simple_parser,
+}
+''')
+        
+        # Create notecard file with multiple fields
+        test_file = test_dir / 'test.ntc'
+        test_file.write_text('''NOTECARD test1
+:TAG: value1
+:CUSTOM_FIELD: custom_value
+Content
+''')
+        
+        # Test with --include-all-fields and JSON format
+        result = runner.invoke(main, ['--cache', str(test_dir), 'index', 'list', '--include-all-fields', '--format', 'json'])
+        assert result.exit_code == 0
+        
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert 'TAG' in data
+        assert 'CUSTOM_FIELD' in data
+        assert len(data) == 2
+
+
+def test_index_list_include_all_fields_no_extra_fields():
+    """Test that --include-all-fields doesn't add duplicates when all fields have parsers."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    # Test with the existing test_notes data where all used fields have parsers
+    result_without = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list'])
+    result_with = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list', '--include-all-fields'])
+    
+    assert result_without.exit_code == 0
+    assert result_with.exit_code == 0
+    
+    # Should produce the same output
+    assert result_without.output == result_with.output
+
+
+def test_index_list_help():
+    """Test that index list --help shows all options."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list', '--help'])
+
+    assert result.exit_code == 0
+    assert '--format' in result.output
+    assert '--pretty-print' in result.output
 
 
 def test_index_dump_unique_with_full_mode():

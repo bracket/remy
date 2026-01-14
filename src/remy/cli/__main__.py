@@ -1,5 +1,8 @@
 import click
 import sys
+import json
+import csv
+from io import StringIO
 
 notecard_cache = None
 
@@ -255,8 +258,6 @@ def index_list(ctx, output_format, pretty_print):
       remy --cache /path/to/notes index list --format json
       remy --cache /path/to/notes index list --format json --pretty-print
     """
-    import json
-    
     cache = ctx.obj['cache']
     
     try:
@@ -318,31 +319,26 @@ def index_dump(ctx, index_name, output_format, pretty_print, output_mode, delimi
       remy --cache /path/to/notes index dump TAG --unique
       remy --cache /path/to/notes index dump TAG --format json --pretty-print
     """
-    import json
-    import csv
-    from io import StringIO
-    
     cache = ctx.obj['cache']
     
-    # Normalize delimiter
-    delimiter_map = {
+    # Normalize delimiter - check named delimiters first, then allow literal characters
+    named_delimiters = {
         'comma': ',',
         'tab': '\t',
         'pipe': '|',
-        ',': ',',
-        '\t': '\t',
-        '|': '|',
     }
     
-    if delimiter not in delimiter_map:
+    if delimiter in named_delimiters:
+        delimiter_char = named_delimiters[delimiter]
+    elif delimiter in (',', '\t', '|'):
+        delimiter_char = delimiter
+    else:
         click.echo(
             f"Error: Unknown delimiter '{delimiter}'.\n"
             f"Supported delimiters: comma, tab, pipe, or literal characters (,, \\t, |)",
             err=True
         )
         sys.exit(1)
-    
-    delimiter_char = delimiter_map[delimiter]
     
     # Get the field index
     try:
@@ -384,8 +380,23 @@ def index_dump(ctx, index_name, output_format, pretty_print, output_mode, delimi
         seen = set()
         unique_data = []
         for item in data:
-            # For tuples, convert to tuple for hashing; for single values, use as-is
-            hash_key = tuple(item) if isinstance(item, (list, tuple)) else item
+            # For tuples/lists, convert to tuple for hashing; for single values, use as-is
+            # Convert non-hashable types to their string representation for hashing
+            if isinstance(item, (list, tuple)):
+                try:
+                    hash_key = tuple(item)
+                except TypeError:
+                    # Handle non-hashable items in tuples (e.g., datetime objects)
+                    hash_key = tuple(str(x) for x in item)
+            else:
+                try:
+                    hash_key = item
+                    # Test if hashable
+                    hash(hash_key)
+                except TypeError:
+                    # Handle non-hashable single items
+                    hash_key = str(item)
+            
             if hash_key not in seen:
                 seen.add(hash_key)
                 unique_data.append(item)

@@ -1248,3 +1248,467 @@ def test_query_help_includes_limit():
     assert '--limit' in result.output
     assert '-l' in result.output
     assert 'Limit the number of results' in result.output or 'limit' in result.output.lower()
+
+
+def test_query_fields_basic():
+    """Test basic --fields option with single field."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', '@primary-label,tag'])
+
+    assert result.exit_code == 0
+    # Should output CSV format with primary label and tag
+    assert 'task1,inbox' in result.output
+    assert 'task2,inbox' in result.output
+
+
+def test_query_fields_multiple_values():
+    """Test --fields with fields that have multiple values (cross-product)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    # Create a test notecard with multiple tag values
+    with runner.isolated_filesystem():
+        import os
+        os.makedirs('.remy')
+        with open('.remy/config.py', 'w') as f:
+            f.write('''
+def simple_parser(field):
+    return (field,)
+
+PARSER_BY_FIELD_NAME = {
+    'TAG': simple_parser,
+}
+''')
+        
+        with open('test.ntc', 'w') as f:
+            f.write('''NOTECARD card1
+:TAG: work
+:TAG: urgent
+Test card
+''')
+        
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', '@primary-label,tag'])
+        
+        assert result.exit_code == 0
+        # Should output one line per tag value (cross-product)
+        lines = result.output.strip().split('\n')
+        assert len(lines) == 2
+        assert 'card1,work' in result.output
+        assert 'card1,urgent' in result.output
+
+
+def test_query_fields_missing_field():
+    """Test --fields with a field that doesn't exist on some cards."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@primary-label,priority', '--limit', '3'])
+
+    assert result.exit_code == 0
+    # Cards without priority field should have empty value
+    lines = result.output.strip().split('\n')
+    assert len(lines) == 3
+    
+    # Check that at least one line has a missing priority field
+    # A line with a missing second field ends with just the primary label and a comma, or ends with ",\n"
+    has_empty_priority = any(
+        line.count(',') == 1 and (line.endswith(',') or ',' == line[-1])
+        for line in lines
+    )
+    assert has_empty_priority, "Expected at least one card to have missing priority field"
+
+
+def test_query_fields_csv_quoting_comma():
+    """Test CSV quoting for values with commas."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    with runner.isolated_filesystem():
+        import os
+        os.makedirs('.remy')
+        with open('.remy/config.py', 'w') as f:
+            f.write('''
+def simple_parser(field):
+    return (field,)
+
+PARSER_BY_FIELD_NAME = {
+    'AUTHOR': simple_parser,
+}
+''')
+        
+        with open('test.ntc', 'w') as f:
+            f.write('''NOTECARD card1
+:AUTHOR: Smith, John
+Test
+''')
+        
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', '@primary-label,author'])
+        
+        assert result.exit_code == 0
+        # Value with comma should be quoted
+        assert 'card1,"Smith, John"' in result.output
+
+
+def test_query_fields_csv_quoting_quotes():
+    """Test CSV quoting for values with quotes."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    with runner.isolated_filesystem():
+        import os
+        os.makedirs('.remy')
+        with open('.remy/config.py', 'w') as f:
+            f.write('''
+def simple_parser(field):
+    return (field,)
+
+PARSER_BY_FIELD_NAME = {
+    'COMMENT': simple_parser,
+}
+''')
+        
+        with open('test.ntc', 'w') as f:
+            f.write('''NOTECARD card1
+:COMMENT: Say "hello" there
+Test
+''')
+        
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', 'comment'])
+        
+        assert result.exit_code == 0
+        # Quotes should be escaped by doubling
+        assert 'Say ""hello"" there' in result.output
+
+
+def test_query_fields_json_format():
+    """Test --fields with JSON format."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', '@primary-label,tag,priority', '--format', 'json'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    assert isinstance(data, list)
+    assert len(data) == 2
+    
+    # Check structure - each item should have field names as keys with array values
+    for item in data:
+        assert '@primary-label' in item
+        assert 'tag' in item
+        assert 'priority' in item
+        assert isinstance(item['@primary-label'], list)
+        assert isinstance(item['tag'], list)
+        assert isinstance(item['priority'], list)
+    
+    # Check specific values
+    task1 = next(item for item in data if 'task1' in item['@primary-label'])
+    assert task1['@primary-label'] == ['task1']
+    assert task1['tag'] == ['inbox']
+    assert task1['priority'] == [3]  # Field values are parsed (integer for priority)
+
+
+def test_query_fields_json_format_empty_fields():
+    """Test --fields JSON format with missing fields (empty arrays)."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@primary-label,priority', '--format', 'json', '--limit', '5'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    assert len(data) == 5
+    
+    # Check that at least one card has an empty priority array (missing field)
+    cards_with_empty_priority = [
+        item for item in data 
+        if item.get('priority') == []
+    ]
+    assert len(cards_with_empty_priority) > 0, "Expected at least one card to have empty priority field"
+
+
+def test_query_fields_pseudo_field_primary_label():
+    """Test @primary-label pseudo-field."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', '@primary-label'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    assert 'task1' in lines
+    assert 'task2' in lines
+
+
+def test_query_fields_pseudo_field_label():
+    """Test @label pseudo-field (all labels including aliases)."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    # Card 1 has labels ['1', 'weasel']
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@primary-label,@label', '--format', 'json', '--limit', '1'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    assert len(data) == 1
+    
+    card = data[0]
+    assert card['@primary-label'] == ['1']
+    assert card['@label'] == ['1', 'weasel']
+
+
+def test_query_fields_pseudo_field_title():
+    """Test @title pseudo-field."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    # Card 1 should have 'weasel' as first block
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@primary-label,@title', '--format', 'json', '--limit', '2'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    
+    # Find card '1'
+    card1 = next((item for item in data if item['@primary-label'] == ['1']), None)
+    assert card1 is not None
+    assert card1['@title'] == ['weasel']
+
+
+def test_query_fields_pseudo_field_first_block():
+    """Test @first-block pseudo-field (alias for @title)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@first-block', '--limit', '2'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should have values for cards with content
+    assert len(lines) == 2
+
+
+def test_query_fields_case_insensitive():
+    """Test that field names are case-insensitive."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    # Test with different case variations
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', '@PRIMARY-LABEL,TAG,Priority'])
+
+    assert result.exit_code == 0
+    # Should work same as lowercase
+    assert 'task1,inbox,3' in result.output
+    assert 'task2,inbox,1' in result.output
+
+
+def test_query_fields_case_insensitive_pseudo_fields():
+    """Test that pseudo-field names are case-insensitive."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@PRIMARY-LABEL,@LABEL', '--format', 'json', '--limit', '1'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    assert len(data) == 1
+    # Field names should be preserved in original case
+    assert '@PRIMARY-LABEL' in data[0]
+    assert '@LABEL' in data[0]
+
+
+def test_query_fields_pseudo_field_id_alias():
+    """Test @id pseudo-field as an alias for @primary-label."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', '@id,tag', '--format', 'json'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    assert len(data) == 2
+    
+    # Check that @id works like @primary-label
+    for item in data:
+        assert '@id' in item
+        assert len(item['@id']) == 1
+        assert item['@id'][0] in ['task1', 'task2']
+
+
+def test_query_fields_with_filter_and_sort():
+    """Test --fields works with query filters and sorting."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', '@primary-label,priority', '--order-by', 'priority'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # task2 has priority 1, task1 has priority 3
+    # Should be sorted by priority
+    assert lines[0] == 'task2,1'
+    assert lines[1] == 'task1,3'
+
+
+def test_query_fields_with_limit():
+    """Test --fields works with --limit."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@primary-label', '--limit', '2'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    assert len(lines) == 2
+
+
+def test_query_fields_help():
+    """Test that query --help shows the --fields option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--help'])
+
+    assert result.exit_code == 0
+    assert '--fields' in result.output
+
+
+def test_query_fields_cross_product_multiple_fields():
+    """Test cross-product behavior with multiple fields having multiple values."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    with runner.isolated_filesystem():
+        import os
+        os.makedirs('.remy')
+        with open('.remy/config.py', 'w') as f:
+            f.write('''
+def simple_parser(field):
+    return (field,)
+
+PARSER_BY_FIELD_NAME = {
+    'TAG': simple_parser,
+    'CAT': simple_parser,
+}
+''')
+        
+        with open('test.ntc', 'w') as f:
+            f.write('''NOTECARD card1
+:TAG: a
+:TAG: b
+:CAT: x
+:CAT: y
+Test
+''')
+        
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', 'tag,cat'])
+        
+        assert result.exit_code == 0
+        lines = result.output.strip().split('\n')
+        # Should have 2 tags × 2 cats = 4 combinations
+        assert len(lines) == 4
+        assert 'a,x' in result.output
+        assert 'a,y' in result.output
+        assert 'b,x' in result.output
+        assert 'b,y' in result.output
+
+
+def test_query_fields_preserves_field_name_case():
+    """Test that field names in output preserve the case from --fields option."""
+    from remy.cli.__main__ import main
+    import json
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--fields', 'TAG,Priority', '--format', 'json'])
+
+    assert result.exit_code == 0
+    
+    data = json.loads(result.output)
+    # Field names should be in the case specified in --fields
+    assert 'TAG' in data[0]
+    assert 'Priority' in data[0]
+
+
+def test_query_fields_datetime_serialization():
+    """Test that datetime and date objects are properly serialized to JSON."""
+    from remy.cli.__main__ import main
+    from datetime import datetime, date
+    import json
+
+    runner = CliRunner()
+    
+    with runner.isolated_filesystem():
+        import os
+        os.makedirs('.remy')
+        with open('.remy/config.py', 'w') as f:
+            f.write('''
+from datetime import datetime, date
+
+def datetime_parser(field):
+    """Parse ISO format datetime."""
+    try:
+        return (datetime.fromisoformat(field.strip()),)
+    except:
+        return ()
+
+def date_parser(field):
+    """Parse ISO format date."""
+    try:
+        return (date.fromisoformat(field.strip()),)
+    except:
+        return ()
+
+def simple_parser(field):
+    return (field.strip(),)
+
+PARSER_BY_FIELD_NAME = {
+    'CREATED': datetime_parser,
+    'MODIFIED': date_parser,
+    'TAG': simple_parser,
+}
+''')
+        
+        with open('test.ntc', 'w') as f:
+            f.write('''NOTECARD card1
+:TAG: test
+:CREATED: 2024-01-15T14:30:45
+:MODIFIED: 2024-01-20
+Test card
+''')
+        
+        # Test JSON format - should not raise TypeError
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', '@id,created,modified', '--format', 'json'])
+        
+        assert result.exit_code == 0
+        
+        data = json.loads(result.output)
+        assert len(data) == 1
+        
+        # Verify datetime and date are serialized as ISO format strings
+        assert data[0]['@id'] == ['card1']
+        assert data[0]['created'] == ['2024-01-15T14:30:45']
+        assert data[0]['modified'] == ['2024-01-20']
+        
+        # Test raw format - should also work
+        result = runner.invoke(main, ['--cache', '.', 'query', '--all', '--fields', '@id,created,modified'])
+        
+        assert result.exit_code == 0
+        assert 'card1,2024-01-15T14:30:45,2024-01-20' in result.output

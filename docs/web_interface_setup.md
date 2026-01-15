@@ -122,10 +122,8 @@ The snapshot is a compressed tarball (`root_asdf.tbz2`) that contains:
 
 **How it works:**
 
-1. **Without snapshot**: The Dockerfile builds Python and Node.js from scratch (see the commented-out RUN command in the Dockerfile around lines 24-28)
-2. **With snapshot**: The Dockerfile extracts the pre-built interpreters from `root_asdf.tbz2` (see the RUN command with bind mount around lines 30-31)
-
-**Note**: Line numbers are approximate and may vary if the Dockerfile is modified.
+1. **Without snapshot**: The Dockerfile builds Python and Node.js from scratch (see the commented-out RUN command in the Dockerfile at lines 24-28)
+2. **With snapshot**: The Dockerfile extracts the pre-built interpreters from `root_asdf.tbz2` (see the RUN command with bind mount at lines 30-31)
 
 The snapshot file should be placed in the `vite/` directory and will be bind-mounted during the Docker build.
 
@@ -135,7 +133,7 @@ If you need to create a new snapshot (e.g., after updating Python or Node.js ver
 
 1. **Build the container from scratch** by editing `vite/Dockerfile`:
 
-   Find and uncomment the RUN command that installs Python and Node.js (around lines 24-28):
+   Find and uncomment the RUN command that installs Python and Node.js (lines 24-28):
    ```dockerfile
    RUN . /asdf/asdf.sh \
        && asdf install python 3.12.2 \
@@ -144,7 +142,7 @@ If you need to create a new snapshot (e.g., after updating Python or Node.js ver
        && asdf global nodejs 21.6.2
    ```
 
-   Find and comment out the RUN command that extracts the snapshot (around lines 30-31):
+   Find and comment out the RUN command that extracts the snapshot (lines 30-31):
    ```dockerfile
    # RUN --mount=type=bind,target=/mnt/build \
    #     cd / && tar -xjvf /mnt/build/root_asdf.tbz2
@@ -414,12 +412,13 @@ Open http://localhost:5000 in your browser (note: port 5000, not 3000).
      - "3001:3000"  # Host port 3001 → Container port 3000
    ```
    
-   For Flask, Flask doesn't directly support port configuration via the CLI. You can set the port using the Flask environment:
+   For Flask, the development server uses port 5000 by default. To use a different port in production, use a WSGI server like gunicorn and specify the port in the bind address:
    ```bash
-   # The Flask dev server defaults to port 5000
-   # For production, use a WSGI server like gunicorn:
    pip install gunicorn
-   gunicorn -w 4 -b 0.0.0.0:5001 'remy.www.app:create_app("/path/to/notecards")'
+   # Set the cache location via environment variable
+   export REMY_CACHE=/path/to/notecards
+   # Run gunicorn on port 5001
+   gunicorn -w 4 -b 0.0.0.0:5001 'remy.www.app:create_app("'$REMY_CACHE'")'
    ```
 
 ### Mount Issues

@@ -294,7 +294,7 @@ def execute_query_filter(cache, query_string):
 
 
 @click.group()
-@click.option('--cache', envvar='REMY_CACHE', help='Location of Remy notecard cache.', required=True)
+@click.option('--cache', envvar='REMY_CACHE', help='Location of Remy notecard cache.')
 @click.pass_context
 def main(ctx, cache):
     """Remy notecard management system."""
@@ -304,16 +304,20 @@ def main(ctx, cache):
 
     global notecard_cache
 
-    url = URL(cache)
-
-    if not url.scheme:
-        url = URL(Path(cache))
-
-    notecard_cache = NotecardCache(url)
-
     # Store cache in context for subcommands
     ctx.ensure_object(dict)
-    ctx.obj['cache'] = notecard_cache
+    
+    # Only load the cache if it's provided (some commands like 'complete' don't need it)
+    if cache:
+        url = URL(cache)
+
+        if not url.scheme:
+            url = URL(Path(cache))
+
+        notecard_cache = NotecardCache(url)
+        ctx.obj['cache'] = notecard_cache
+    else:
+        ctx.obj['cache'] = None
 
 
 @main.command()
@@ -351,7 +355,10 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
       remy --cache /path/to/notes query --all --order-by created --reverse
       remy --cache /path/to/notes query --all --order-by created --limit 1
     """
-    cache = ctx.obj['cache']
+    cache = ctx.obj.get('cache')
+    
+    if cache is None:
+        raise click.UsageError("The --cache option is required for this command.")
 
     # Validate input: must have either query_expr, where_clause, or --all
     if not query_expr and not where_clause and not show_all:
@@ -439,6 +446,85 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
 
 
 @main.command()
+@click.option('-o', '--output', 'output_file', type=click.Path(), help='Output file path for completion script')
+@click.argument('output_path', required=False, type=click.Path())
+def complete(output_file, output_path):
+    """Generate bash completion script for remy.
+
+    Without arguments, prints the script to stdout.
+    Use -o/--output or a positional argument to write to a file.
+
+    Examples:
+      remy complete > ~/.bash_completion.d/remy
+      remy complete -o ~/.bash_completion.d/remy
+      remy complete ~/.bash_completion.d/remy
+    """
+    import click.shell_completion as sc
+    from pathlib import Path
+
+    # Validate that both output methods are not specified
+    if output_file and output_path:
+        raise click.UsageError(
+            "Cannot specify both -o/--output option and positional argument. "
+            "Use one or the other to specify the output file."
+        )
+
+    # Determine the output destination
+    output_dest = output_file or output_path
+
+    # Generate the bash completion script
+    bash_complete = sc.BashComplete(None, {}, "remy", "_REMY_COMPLETE")
+    script = bash_complete.source()
+
+    # Add installation instructions header
+    header = """# Bash completion script for remy
+#
+# Installation Instructions:
+# -------------------------
+# 1. Ensure you have bash-completion package installed:
+#    - Ubuntu/Debian: sudo apt-get install bash-completion
+#    - macOS (with Homebrew): brew install bash-completion
+#
+# 2. Install this completion script by one of these methods:
+#
+#    Method A - System-wide (requires root):
+#      sudo cp this_file /etc/bash_completion.d/remy
+#
+#    Method B - User-specific:
+#      mkdir -p ~/.bash_completion.d
+#      cp this_file ~/.bash_completion.d/remy
+#      Add this line to your ~/.bashrc:
+#        source ~/.bash_completion.d/remy
+#
+#    Method C - Inline in .bashrc:
+#      Simply add the contents of this file to your ~/.bashrc
+#
+# 3. Reload your shell or run: source ~/.bashrc
+#
+# After installation, you can use tab completion with remy commands:
+#   remy <TAB>           # Shows available commands
+#   remy query --<TAB>   # Shows available options
+#
+
+"""
+
+    full_script = header + script
+
+    # Write to file or stdout
+    if output_dest:
+        try:
+            output_path_obj = Path(output_dest)
+            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+            output_path_obj.write_text(full_script)
+            click.echo(f"Bash completion script written to: {output_dest}")
+        except OSError as e:
+            raise click.ClickException(f"Failed to write completion script to '{output_dest}': {e}")
+    else:
+        # Output to stdout
+        click.echo(full_script)
+
+
+@main.command()
 @click.argument('label', required=False)
 @click.pass_context
 def edit(ctx, label):
@@ -456,7 +542,11 @@ def edit(ctx, label):
     from pathlib import Path
     from remy.url import URL
     
-    cache = ctx.obj['cache']
+    cache = ctx.obj.get('cache')
+    
+    if cache is None:
+        raise click.UsageError("The --cache option is required for this command.")
+    
     cache_url = cache.url
 
     if cache_url.scheme != 'file':

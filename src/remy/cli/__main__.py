@@ -1,5 +1,8 @@
 import click
 import sys
+import json
+import csv
+from io import StringIO
 
 notecard_cache = None
 
@@ -436,6 +439,250 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
         elif output_format.lower() == 'raw':
             output = format_notecards_raw(unique_cards)
             print(output, end='')
+
+
+@main.group()
+@click.pass_context
+def index(ctx):
+    """Manage and inspect notecard field indices."""
+    pass
+
+
+@index.command('list')
+@click.option('--format', 'output_format',
+              type=click.Choice(['raw', 'json'], case_sensitive=False),
+              default='raw',
+              help='Output format (default: raw)')
+@click.option('--pretty-print', 'pretty_print', is_flag=True,
+              help='Pretty-print JSON output (only applies to --format=json)')
+@click.option('--include-all-fields', 'include_all_fields', is_flag=True,
+              help='Include field names from cards that do not have parsers defined')
+@click.pass_context
+def index_list(ctx, output_format, pretty_print, include_all_fields):
+    """List all available field index names.
+    
+    Lists all field indices configured in the cache's PARSER_BY_FIELD_NAME dictionary.
+    With --include-all-fields, also includes field names found in cards that don't
+    have parsers defined (this scans all cards and may be slower for large caches).
+    
+    Examples:
+      remy --cache /path/to/notes index list
+      remy --cache /path/to/notes index list --format json
+      remy --cache /path/to/notes index list --format json --pretty-print
+      remy --cache /path/to/notes index list --include-all-fields
+    """
+    cache = ctx.obj['cache']
+    
+    try:
+        # Get field names from config
+        field_names = set(cache.config_module.PARSER_BY_FIELD_NAME.keys())
+    except AttributeError:
+        click.echo(
+            "Error: Configuration file missing or PARSER_BY_FIELD_NAME not defined.\n"
+            "Please check your '.remy/config.py' file.",
+            err=True
+        )
+        sys.exit(1)
+    
+    # If requested, also include field names from cards that don't have parsers
+    if include_all_fields:
+        from remy.ast.parse import parse_content
+        from remy.ast import Field
+        
+        for label, card in cache.cards_by_label.items():
+            # Only process each card once (by primary label)
+            if label != card.primary_label:
+                continue
+            
+            # Extract field names from card content
+            for node in parse_content(card.content):
+                if isinstance(node, Field):
+                    field_names.add(node.label.upper())
+    
+    # Sort field names for consistent output
+    field_names = sorted(field_names)
+    
+    # Format and output
+    if output_format.lower() == 'json':
+        if pretty_print:
+            output = json.dumps(field_names, ensure_ascii=False, indent=2)
+        else:
+            output = json.dumps(field_names, ensure_ascii=False)
+        print(output)
+    else:  # raw format
+        for name in field_names:
+            print(name)
+
+
+@index.command('dump')
+@click.argument('index_name')
+@click.option('--format', 'output_format',
+              type=click.Choice(['raw', 'json'], case_sensitive=False),
+              default='raw',
+              help='Output format (default: raw)')
+@click.option('--pretty-print', 'pretty_print', is_flag=True,
+              help='Pretty-print JSON output (only applies to --format=json)')
+@click.option('--full', 'output_mode', flag_value='full', default=True,
+              help='Output (label, value) pairs (default)')
+@click.option('--labels', 'output_mode', flag_value='labels',
+              help='Output labels only')
+@click.option('--values', 'output_mode', flag_value='values',
+              help='Output values only')
+@click.option('-d', '--delimiter', 'delimiter', default='comma',
+              help='Delimiter for raw format: comma, tab, pipe, or literal character (default: comma)')
+@click.option('-u', '--unique', 'unique', is_flag=True,
+              help='Remove duplicate entries while maintaining sort order')
+@click.pass_context
+def index_dump(ctx, index_name, output_format, pretty_print, output_mode, delimiter, unique):
+    """Dump the contents of a specific field index.
+    
+    Shows labels and/or values from the specified field index.
+    The output is sorted according to the underlying index structure.
+    
+    Examples:
+      remy --cache /path/to/notes index dump TAG
+      remy --cache /path/to/notes index dump TAG --labels
+      remy --cache /path/to/notes index dump TAG --values
+      remy --cache /path/to/notes index dump TAG -d tab
+      remy --cache /path/to/notes index dump TAG --unique
+      remy --cache /path/to/notes index dump TAG --format json --pretty-print
+    """
+    cache = ctx.obj['cache']
+    
+    # Normalize delimiter - check named delimiters first, then allow literal characters
+    named_delimiters = {
+        'comma': ',',
+        'tab': '\t',
+        'pipe': '|',
+    }
+    
+    if delimiter in named_delimiters:
+        delimiter_char = named_delimiters[delimiter]
+    elif delimiter in (',', '\t', '|'):
+        delimiter_char = delimiter
+    else:
+        click.echo(
+            f"Error: Unknown delimiter '{delimiter}'.\n"
+            f"Supported delimiters: comma, tab, pipe, or literal characters (,, \\t, |)",
+            err=True
+        )
+        sys.exit(1)
+    
+    # Get the field index
+    try:
+        field_index = cache.field_index(index_name)
+    except KeyError:
+        click.echo(
+            f"Error: Field index '{index_name}' not found in configuration.\n"
+            f"Please check your '.remy/config.py' file and ensure '{index_name}' "
+            f"is defined in PARSER_BY_FIELD_NAME.",
+            err=True
+        )
+        sys.exit(1)
+    except AttributeError:
+        click.echo(
+            "Error: Configuration file missing or PARSER_BY_FIELD_NAME not defined.\n"
+            "Please check your '.remy/config.py' file.",
+            err=True
+        )
+        sys.exit(1)
+    
+    # Collect data based on output mode
+    data = []
+    
+    if output_mode == 'full':
+        # Output (label, value) pairs from forward index
+        for (type_id, value), label in field_index.index:
+            data.append((label, value))
+    elif output_mode == 'labels':
+        # Output labels only from forward index
+        for (type_id, value), label in field_index.index:
+            data.append(label)
+    elif output_mode == 'values':
+        # Output values only from forward index
+        for (type_id, value), label in field_index.index:
+            data.append(value)
+    
+    # Apply unique filter if requested
+    if unique:
+        seen = set()
+        unique_data = []
+        for item in data:
+            # For tuples/lists, convert to tuple for hashing; for single values, use as-is
+            # Convert non-hashable types to their string representation for hashing
+            if isinstance(item, (list, tuple)):
+                try:
+                    hash_key = tuple(item)
+                except TypeError:
+                    # Handle non-hashable items in tuples (e.g., datetime objects)
+                    hash_key = tuple(str(x) for x in item)
+            else:
+                try:
+                    hash_key = item
+                    # Test if hashable
+                    hash(hash_key)
+                except TypeError:
+                    # Handle non-hashable single items
+                    hash_key = str(item)
+            
+            if hash_key not in seen:
+                seen.add(hash_key)
+                unique_data.append(item)
+        data = unique_data
+    
+    # Format and output
+    if output_format.lower() == 'json':
+        # Convert non-serializable types to strings
+        serializable_data = []
+        for item in data:
+            if isinstance(item, (list, tuple)):
+                serializable_item = []
+                for val in item:
+                    serializable_item.append(_make_json_serializable(val))
+                serializable_data.append(serializable_item)
+            else:
+                serializable_data.append(_make_json_serializable(item))
+        
+        if pretty_print:
+            output = json.dumps(serializable_data, ensure_ascii=False, indent=2)
+        else:
+            output = json.dumps(serializable_data, ensure_ascii=False)
+        print(output)
+    else:  # raw format
+        for item in data:
+            if isinstance(item, (list, tuple)):
+                # Multiple values - use CSV writer for proper escaping
+                output_buffer = StringIO()
+                writer = csv.writer(output_buffer, delimiter=delimiter_char, lineterminator='')
+                writer.writerow([str(val) for val in item])
+                print(output_buffer.getvalue())
+            else:
+                # Single value - check if escaping is needed
+                value_str = str(item)
+                if delimiter_char in value_str or '"' in value_str or '\n' in value_str:
+                    # Use CSV writer for proper escaping
+                    output_buffer = StringIO()
+                    writer = csv.writer(output_buffer, delimiter=delimiter_char, lineterminator='')
+                    writer.writerow([value_str])
+                    print(output_buffer.getvalue())
+                else:
+                    # No escaping needed
+                    print(value_str)
+
+
+def _make_json_serializable(value):
+    """Convert non-JSON-serializable types to reasonable string representations."""
+    from datetime import datetime, date, time, timedelta
+    
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    elif isinstance(value, timedelta):
+        return str(value)
+    elif isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    else:
+        # Fallback: convert to string
+        return str(value)
 
 
 @main.command()

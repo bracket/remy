@@ -17,7 +17,9 @@ import re
 from datetime import datetime, timezone
 
 from remy.exceptions import RemyError
-from remy.query.ast_nodes import Timedelta
+from remy.query.parser import QueryTransformer
+from remy.query.ast_nodes import DateTimeLiteral, BinaryOp
+from remy.query.eval import _evaluate_binary_op
 
 
 def parse_datetime_with_arithmetic(value: str) -> datetime:
@@ -27,6 +29,10 @@ def parse_datetime_with_arithmetic(value: str) -> datetime:
     This function parses datetime strings in ISO format with support for
     arithmetic operations using + and - operators with timedelta expressions.
     All returned datetime objects are timezone-aware (UTC).
+
+    This parser reuses the datetime arithmetic parsing logic from the query
+    module, ensuring that any updates to the query parser automatically
+    reflect in this function.
 
     Supported formats:
         - Plain datetime: '2024-01-31' or '2024-01-31 15:30:00'
@@ -85,197 +91,42 @@ def parse_datetime_with_arithmetic(value: str) -> datetime:
             "Please use concrete timestamp values instead."
         )
 
-    # Check if the string contains arithmetic operators
-    if _contains_arithmetic(value):
-        return _parse_temporal_arithmetic(value)
+    # Use the QueryTransformer to parse the datetime expression
+    # This ensures we reuse all the existing parsing logic
+    transformer = QueryTransformer()
+    
+    # Check if the string contains arithmetic operators using the transformer's method
+    if transformer._contains_arithmetic(value):
+        # Parse as temporal arithmetic expression (supports chained operations)
+        ast_node = transformer._parse_temporal_arithmetic(value, target_type='timestamp')
+        
+        # Evaluate the BinaryOp to get the final datetime
+        result = _evaluate_binary_op(ast_node)
+        
+        # Ensure the result is a datetime (not a date) and is timezone-aware in UTC
+        if isinstance(result, datetime):
+            if result.tzinfo is None:
+                result = result.replace(tzinfo=timezone.utc)
+            elif result.tzinfo != timezone.utc:
+                result = result.astimezone(timezone.utc)
+            return result
+        else:
+            # If we got a date, convert to datetime at midnight UTC
+            return datetime.combine(result, datetime.min.time(), tzinfo=timezone.utc)
     else:
-        # Plain datetime string without arithmetic
-        return _parse_plain_datetime(value)
-
-
-def _contains_arithmetic(expr_str: str) -> bool:
-    """
-    Check if a string expression contains arithmetic operators.
-
-    Args:
-        expr_str: The expression string to check
-
-    Returns:
-        True if the string contains arithmetic operators, False otherwise
-    """
-    # Check if there's a + (but not timezone like +05:00 or +HH:MM)
-    if '+' in expr_str:
-        # Exclude timezone offsets like +05:00
-        if not re.search(r'[+\-]\d{2}:\d{2}\s*$', expr_str):
-            return True
-    
-    # For -, check if it's arithmetic (not part of a date like YYYY-MM-DD or timezone)
-    if '-' in expr_str:
-        # Exclude timezone offsets like -08:00
-        if re.search(r'[+\-]\d{2}:\d{2}\s*$', expr_str):
-            return False
-        # Match: complete ISO date/timestamp followed by - and then more content
-        # This ensures we have a complete temporal value before the operator
-        if re.search(r'\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?\s*-\s*\d', expr_str):
-            return True
-    
-    return False
-
-
-def _parse_plain_datetime(datetime_str: str) -> datetime:
-    """
-    Parse a plain datetime string without arithmetic.
-
-    Args:
-        datetime_str: ISO format datetime string
-
-    Returns:
-        A timezone-aware datetime object in UTC
-
-    Raises:
-        RemyError: If the datetime format is invalid
-    """
-    try:
-        # Try to parse datetime - fromisoformat handles timezone automatically
-        dt = datetime.fromisoformat(datetime_str)
-        # If timezone-aware, convert to UTC
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc)
-        else:
-            # If no timezone specified, treat as UTC
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except ValueError as e:
-        raise RemyError(
-            f"Invalid datetime format: '{datetime_str}'. "
-            f"Expected ISO format 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' with optional timezone. "
-            f"Error: {str(e)}"
-        )
-
-
-def _parse_temporal_arithmetic(expr_str: str) -> datetime:
-    """
-    Parse a temporal arithmetic expression like '2024-01-31 - 2 days'.
-
-    This function supports chained arithmetic operations like
-    '2024-01-31 - 1 week + 3 days' by processing them left-to-right.
-
-    Args:
-        expr_str: The expression string (e.g., '2024-01-31 - 2 days')
-
-    Returns:
-        A timezone-aware datetime object in UTC
-
-    Raises:
-        RemyError: If the expression is invalid
-    """
-    # Find all arithmetic operators with their positions
-    # We need to find + or - that's NOT part of the date (YYYY-MM-DD) or timezone
-    
-    # First, extract the base datetime (leftmost value before any arithmetic)
-    # Include optional timezone offset
-    base_match = re.match(r'^(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?(?:[+\-]\d{2}:\d{2})?)', expr_str)
-    
-    if not base_match:
-        raise RemyError(f"Invalid temporal arithmetic expression: '{expr_str}'")
-    
-    base_datetime_str = base_match.group(1).strip()
-    remaining = expr_str[base_match.end():].strip()
-    
-    # Parse the base datetime
-    result = _parse_plain_datetime(base_datetime_str)
-    
-    # Now process all arithmetic operations in sequence
-    # Pattern: operator followed by timedelta
-    while remaining:
-        # Match operator and timedelta (exclude +/- that are part of the timedelta)
-        op_match = re.match(r'^([+\-])\s*([^+\-]+?)(?=\s*[+\-]|$)', remaining)
-        
-        if not op_match:
+        # Plain datetime string without arithmetic - parse directly
+        try:
+            dt = datetime.fromisoformat(value)
+            # If timezone-aware, convert to UTC
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc)
+            else:
+                # If no timezone specified, treat as UTC
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except ValueError as e:
             raise RemyError(
-                f"Invalid arithmetic operation in expression: '{expr_str}'. "
-                f"Failed to parse: '{remaining}'"
+                f"Invalid datetime format: '{value}'. "
+                f"Expected ISO format 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' with optional timezone. "
+                f"Error: {str(e)}"
             )
-        
-        operator = op_match.group(1)
-        timedelta_str = op_match.group(2).strip()
-        
-        # Parse the timedelta
-        timedelta_obj = _parse_timedelta_from_string(timedelta_str)
-        
-        # Apply the operation
-        if operator == '+':
-            result = result + timedelta_obj
-        elif operator == '-':
-            result = result - timedelta_obj
-        else:
-            raise RemyError(f"Unknown operator: {operator}")
-        
-        # Move to the next part
-        remaining = remaining[op_match.end():].strip()
-    
-    return result
-
-
-def _parse_timedelta_from_string(td_str: str) -> Timedelta:
-    """
-    Parse a timedelta string without the ::timedelta cast.
-
-    Args:
-        td_str: String like '2 days', '01:30', or '3 hours'
-
-    Returns:
-        Timedelta object
-
-    Raises:
-        RemyError: If the timedelta format is invalid
-    """
-    td_str = td_str.strip()
-    
-    # Try to parse as time format if it contains ':'
-    if ':' in td_str:
-        parts = td_str.split(':')
-        if len(parts) == 2:
-            # HH:MM or :MM format
-            hours_str, minutes_str = parts
-            hours = int(hours_str) if hours_str else 0
-            minutes = int(minutes_str)
-            seconds = 0
-        elif len(parts) == 3:
-            # HH:MM:SS, :MM:SS, or ::SS format
-            hours_str, minutes_str, seconds_str = parts
-            hours = int(hours_str) if hours_str else 0
-            minutes = int(minutes_str) if minutes_str else 0
-            seconds = int(seconds_str)
-        else:
-            raise RemyError(f"Invalid time format: '{td_str}'")
-        
-        total_seconds = hours * 3600 + minutes * 60 + seconds
-        return Timedelta(total_seconds, 'seconds')
-    
-    # Parse as "<number><optional_space><unit>"
-    pattern = r'^(\d+)\s*(day|days|hour|hours|minute|minutes|second|seconds|week|weeks|month|months|year|years)$'
-    match = re.match(pattern, td_str, re.IGNORECASE)
-    
-    if not match:
-        raise RemyError(
-            f"Invalid timedelta in arithmetic expression: '{td_str}'. "
-            f"Expected format: '<number> <unit>' or 'HH:MM[:SS]'"
-        )
-    
-    value = int(match.group(1))
-    unit_str = match.group(2).lower()
-    
-    # Normalize to plural form
-    unit_map = {
-        'day': 'days', 'days': 'days',
-        'hour': 'hours', 'hours': 'hours',
-        'minute': 'minutes', 'minutes': 'minutes',
-        'second': 'seconds', 'seconds': 'seconds',
-        'week': 'weeks', 'weeks': 'weeks',
-        'month': 'months', 'months': 'months',
-        'year': 'years', 'years': 'years'
-    }
-    
-    unit = unit_map[unit_str]
-    return Timedelta(value, unit)

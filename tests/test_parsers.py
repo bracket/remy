@@ -303,19 +303,19 @@ def test_parse_datetime_invalid_date():
 
 def test_parse_datetime_invalid_timedelta_unit():
     """Test that invalid timedelta unit raises error."""
-    with pytest.raises(RemyError, match="Invalid timedelta in arithmetic expression"):
+    with pytest.raises(RemyError, match="Invalid arithmetic in temporal expression"):
         parse_datetime_with_arithmetic('2024-01-31 + 7 fortnights')
 
 
 def test_parse_datetime_invalid_timedelta_format():
     """Test that invalid timedelta format raises error."""
-    with pytest.raises(RemyError, match="Invalid timedelta in arithmetic expression"):
+    with pytest.raises(RemyError, match="Invalid arithmetic in temporal expression"):
         parse_datetime_with_arithmetic('2024-01-31 + seven days')
 
 
 def test_parse_datetime_missing_timedelta():
     """Test that missing timedelta after operator raises error."""
-    with pytest.raises(RemyError, match="Invalid arithmetic operation"):
+    with pytest.raises(RemyError, match="Invalid arithmetic in temporal expression"):
         parse_datetime_with_arithmetic('2024-01-31 +')
 
 

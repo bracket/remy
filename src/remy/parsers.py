@@ -173,7 +173,8 @@ def _parse_temporal_arithmetic(expr_str: str) -> datetime:
     # We need to find + or - that's NOT part of the date (YYYY-MM-DD) or timezone
     
     # First, extract the base datetime (leftmost value before any arithmetic)
-    base_match = re.match(r'^(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?)', expr_str)
+    # Include optional timezone offset
+    base_match = re.match(r'^(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?(?:[+\-]\d{2}:\d{2})?)', expr_str)
     
     if not base_match:
         raise RemyError(f"Invalid temporal arithmetic expression: '{expr_str}'")
@@ -187,8 +188,8 @@ def _parse_temporal_arithmetic(expr_str: str) -> datetime:
     # Now process all arithmetic operations in sequence
     # Pattern: operator followed by timedelta
     while remaining:
-        # Match operator and timedelta
-        op_match = re.match(r'^([+\-])\s*(.+?)(?=\s*[+\-]|$)', remaining)
+        # Match operator and timedelta (exclude +/- that are part of the timedelta)
+        op_match = re.match(r'^([+\-])\s*([^+\-]+?)(?=\s*[+\-]|$)', remaining)
         
         if not op_match:
             raise RemyError(
@@ -204,7 +205,7 @@ def _parse_temporal_arithmetic(expr_str: str) -> datetime:
         
         # Apply the operation
         if operator == '+':
-            result = timedelta_obj + result
+            result = result + timedelta_obj
         elif operator == '-':
             result = result - timedelta_obj
         else:

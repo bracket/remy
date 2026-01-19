@@ -131,9 +131,17 @@ class QueryTransformer(Transformer):
         # Pattern: operator followed by timedelta, potentially repeated
         while remaining:
             # Match operator and timedelta
-            # Pattern: [+\-] <number> <unit> or [+\-] HH:MM[:SS]
-            # Need to capture the full unit name (with optional 's')
-            op_match = re.match(r'^\s*([+\-])\s*(\d+\s*(?:days?|hours?|minutes?|seconds?|weeks?|months?|years?)|:\d+(?::\d+)?|\d+:\d+(?::\d+)?)', remaining, re.IGNORECASE)
+            # Pattern: [+\-] followed by either:
+            #   - <number> <unit> (e.g., "2 days", "3hours")
+            #   - HH:MM[:SS] time format (e.g., "01:30", "2:15:45")
+            #   - :MM[:SS] minutes/seconds only (e.g., ":45", ":30:15")
+            
+            # Build regex pattern for readability
+            unit_pattern = r'\d+\s*(?:days?|hours?|minutes?|seconds?|weeks?|months?|years?)'
+            time_pattern = r'(?::\d+(?::\d+)?|\d+:\d+(?::\d+)?)'
+            timedelta_pattern = f'({unit_pattern}|{time_pattern})'
+            
+            op_match = re.match(rf'^\s*([+\-])\s*{timedelta_pattern}', remaining, re.IGNORECASE)
             
             if not op_match:
                 raise RemyError(

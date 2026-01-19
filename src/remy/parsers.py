@@ -7,10 +7,15 @@ notecard metadata field values, such as datetime fields with arithmetic support.
 Example usage in .remy/config.py:
     from remy.parsers import parse_datetime_with_arithmetic
 
-    PARSERS = {
-        'tickle': parse_datetime_with_arithmetic,
-        'deadline': parse_datetime_with_arithmetic,
+    def tickle_parser(field):
+        return (parse_datetime_with_arithmetic(field.strip()),)
+
+    PARSER_BY_FIELD_NAME = {
+        'tickle': tickle_parser,
+        'deadline': tickle_parser,
     }
+
+Note: Field parsers must return a tuple of values for indexing purposes.
 """
 
 import re
@@ -36,10 +41,12 @@ def parse_datetime_with_arithmetic(value: str) -> datetime:
 
     Supported formats:
         - Plain datetime: '2024-01-31' or '2024-01-31 15:30:00'
+        - With timezone: '2024-01-31 15:30:00+05:00' or '2024-01-31 15:30:00+0500'
         - With addition: '2024-01-31 + 7 days'
         - With subtraction: '2024-01-31 - 2 weeks'
         - Chained operations: '2024-01-31 - 1 week + 3 days'
         - With time arithmetic: '2024-01-31 15:30:00 + 2 hours'
+        - Timezone with arithmetic: '2024-01-31 15:30:00+0000 - 2 days'
 
     Supported timedelta units:
         - day, days
@@ -75,6 +82,9 @@ def parse_datetime_with_arithmetic(value: str) -> datetime:
 
         >>> parse_datetime_with_arithmetic('2024-01-31 15:30:00 + 2 hours')
         datetime.datetime(2024, 1, 31, 17, 30, tzinfo=datetime.timezone.utc)
+
+        >>> parse_datetime_with_arithmetic('2024-01-31 15:30:00+0000 - 2 days')
+        datetime.datetime(2024, 1, 29, 15, 30, tzinfo=datetime.timezone.utc)
     """
     if not isinstance(value, str):
         raise RemyError(f"Expected string value, got {type(value).__name__}")

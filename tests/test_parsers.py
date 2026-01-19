@@ -45,6 +45,24 @@ def test_parse_datetime_with_timezone_negative():
     assert result.tzinfo == timezone.utc
 
 
+def test_parse_datetime_with_timezone_no_colon_positive():
+    """Test parsing datetime with positive timezone offset without colon (+0000 format)."""
+    result = parse_datetime_with_arithmetic('2024-01-31 15:30:00+0500')
+    # Should be converted to UTC (subtract 5 hours)
+    expected = datetime(2024, 1, 31, 10, 30, 0, tzinfo=timezone.utc)
+    assert result == expected
+    assert result.tzinfo == timezone.utc
+
+
+def test_parse_datetime_with_timezone_no_colon_negative():
+    """Test parsing datetime with negative timezone offset without colon (-0800 format)."""
+    result = parse_datetime_with_arithmetic('2024-01-31 15:30:00-0800')
+    # Should be converted to UTC (add 8 hours)
+    expected = datetime(2024, 1, 31, 23, 30, 0, tzinfo=timezone.utc)
+    assert result == expected
+    assert result.tzinfo == timezone.utc
+
+
 def test_parse_datetime_midnight():
     """Test parsing datetime at midnight."""
     result = parse_datetime_with_arithmetic('2024-01-31 00:00:00')
@@ -429,6 +447,20 @@ def test_parse_datetime_with_timezone_and_arithmetic():
     # First convert to UTC: 2024-02-01 01:00:00
     # Then add 2 hours: 2024-02-01 03:00:00
     result = parse_datetime_with_arithmetic('2024-01-31 20:00:00-05:00 + 2 hours')
+    expected = datetime(2024, 2, 1, 3, 0, 0, tzinfo=timezone.utc)
+    assert result == expected
+
+
+def test_parse_datetime_with_timezone_no_colon_and_arithmetic():
+    """Test parsing datetime with timezone (no colon) and arithmetic operations."""
+    # Test the exact case from user's report: 2026-01-19 19:41:46+0000 - 2 days
+    result = parse_datetime_with_arithmetic('2026-01-19 19:41:46+0000 - 2 days')
+    expected = datetime(2026, 1, 17, 19, 41, 46, tzinfo=timezone.utc)
+    assert result == expected
+    
+    # Test with positive offset and addition
+    result = parse_datetime_with_arithmetic('2024-01-31 20:00:00-0500 + 2 hours')
+    # First convert to UTC: 2024-02-01 01:00:00, then add 2 hours: 2024-02-01 03:00:00
     expected = datetime(2024, 2, 1, 3, 0, 0, tzinfo=timezone.utc)
     assert result == expected
 

@@ -62,15 +62,15 @@ class QueryTransformer(Transformer):
     def _contains_arithmetic(self, expr_str):
         """Check if a string expression contains arithmetic operators."""
         import re
-        # Check if there's a + (but not timezone like +05:00 or +HH:MM)
+        # Check if there's a + (but not timezone like +05:00, +0500, or +HH:MM)
         if '+' in expr_str:
-            # Exclude timezone offsets like +05:00
-            if not re.search(r'[+\-]\d{2}:\d{2}\s*$', expr_str):
+            # Exclude timezone offsets like +05:00 or +0500 (with or without colon)
+            if not re.search(r'[+\-]\d{2}:?\d{2}\s*$', expr_str):
                 return True
         # For -, check if it's arithmetic (not part of a date like YYYY-MM-DD or timezone)
         if '-' in expr_str:
-            # Exclude timezone offsets like -08:00
-            if re.search(r'[+\-]\d{2}:\d{2}\s*$', expr_str):
+            # Exclude timezone offsets like -08:00 or -0800 (with or without colon)
+            if re.search(r'[+\-]\d{2}:?\d{2}\s*$', expr_str):
                 return False
             # Match: complete ISO date/timestamp/keyword followed by - and then more content
             # This ensures we have a complete temporal value before the operator
@@ -95,7 +95,8 @@ class QueryTransformer(Transformer):
         
         # Find the base temporal value (datetime/date/now/today) with optional timezone
         # Pattern: keyword or ISO datetime (with optional timezone offset)
-        base_match = re.match(r'^(now|today|\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?(?:[+\-]\d{2}:\d{2})?)', expr_str, re.IGNORECASE)
+        # Timezone formats supported: +HH:MM, -HH:MM, +HHMM, -HHMM
+        base_match = re.match(r'^(now|today|\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?(?:[+\-]\d{2}:?\d{2})?)', expr_str, re.IGNORECASE)
         
         if not base_match:
             raise RemyError(f"Invalid temporal arithmetic expression: '{expr_str}'")

@@ -62,15 +62,15 @@ class QueryTransformer(Transformer):
     def _contains_arithmetic(self, expr_str):
         """Check if a string expression contains arithmetic operators."""
         import re
-        # Check if there's a + (but not timezone like +05:00 or +HH:MM)
+        # Check if there's a + (but not timezone like +05:00, +0500, or +HH:MM)
         if '+' in expr_str:
-            # Exclude timezone offsets like +05:00
-            if not re.search(r'[+\-]\d{2}:\d{2}\s*$', expr_str):
+            # Exclude timezone offsets like +05:00 or +0500 (with or without colon)
+            if not re.search(r'[+\-]\d{2}:?\d{2}\s*$', expr_str):
                 return True
         # For -, check if it's arithmetic (not part of a date like YYYY-MM-DD or timezone)
         if '-' in expr_str:
-            # Exclude timezone offsets like -08:00
-            if re.search(r'[+\-]\d{2}:\d{2}\s*$', expr_str):
+            # Exclude timezone offsets like -08:00 or -0800 (with or without colon)
+            if re.search(r'[+\-]\d{2}:?\d{2}\s*$', expr_str):
                 return False
             # Match: complete ISO date/timestamp/keyword followed by - and then more content
             # This ensures we have a complete temporal value before the operator
@@ -82,32 +82,29 @@ class QueryTransformer(Transformer):
         """
         Parse a temporal arithmetic expression like 'now - 2 days' or 'today + 1 hour'.
         
+        Supports chained operations like 'now - 2 days + 3 hours'.
+        
         Args:
-            expr_str: The expression string (e.g., 'now - 2 days')
+            expr_str: The expression string (e.g., 'now - 2 days', 'now - 2 days + 3 hours')
             target_type: Either 'date' or 'timestamp'
             
         Returns:
-            A BinaryOp AST node representing the arithmetic
+            A BinaryOp AST node representing the arithmetic (possibly nested for chained operations)
         """
         import re
         
-        # Find the arithmetic operator position
-        # We need to find + or - that's NOT part of the date (YYYY-MM-DD)
-        # Look for the operator after a complete date/timestamp/keyword
+        # Find the base temporal value (datetime/date/now/today) with optional timezone
+        # Pattern: keyword or ISO datetime (with optional timezone offset)
+        # Timezone formats supported: +HH:MM, -HH:MM, +HHMM, -HHMM
+        base_match = re.match(r'^(now|today|\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?(?:[+\-]\d{2}:?\d{2})?)', expr_str, re.IGNORECASE)
         
-        # Try to find the operator
-        operator_match = re.search(r'(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?|now|today)\s*([+\-])\s*', expr_str, re.IGNORECASE)
-        
-        if not operator_match:
+        if not base_match:
             raise RemyError(f"Invalid temporal arithmetic expression: '{expr_str}'")
         
-        # Extract parts
-        left_str = operator_match.group(1).strip()
-        operator = operator_match.group(2)
-        # Everything after the operator
-        right_str = expr_str[operator_match.end():].strip()
+        left_str = base_match.group(1).strip()
+        remaining = expr_str[base_match.end():].strip()
         
-        # Parse left operand - can be 'now', 'today', or a date/datetime string
+        # Parse the base temporal value
         if left_str.lower() == 'now':
             left_node = DateTimeLiteral(datetime.now(timezone.utc))
         elif left_str.lower() == 'today':
@@ -131,11 +128,41 @@ class QueryTransformer(Transformer):
             except ValueError:
                 raise RemyError(f"Invalid date in expression: '{left_str}'")
         
-        # Parse right operand - should be a timedelta
-        right_node = self._parse_timedelta_from_string(right_str)
+        # Now parse all arithmetic operations and build nested BinaryOp nodes
+        # Pattern: operator followed by timedelta, potentially repeated
+        while remaining:
+            # Match operator and timedelta
+            # Pattern: [+\-] followed by either:
+            #   - <number> <unit> (e.g., "2 days", "3hours")
+            #   - HH:MM[:SS] time format (e.g., "01:30", "2:15:45")
+            #   - :MM[:SS] minutes/seconds only (e.g., ":45", ":30:15")
+            
+            # Build regex pattern for readability
+            unit_pattern = r'\d+\s*(?:days?|hours?|minutes?|seconds?|weeks?|months?|years?)'
+            time_pattern = r'(?::\d+(?::\d+)?|\d+:\d+(?::\d+)?)'
+            timedelta_pattern = f'({unit_pattern}|{time_pattern})'
+            
+            op_match = re.match(rf'^\s*([+\-])\s*{timedelta_pattern}', remaining, re.IGNORECASE)
+            
+            if not op_match:
+                raise RemyError(
+                    f"Invalid arithmetic in temporal expression: '{expr_str}'. "
+                    f"Failed to parse: '{remaining}'"
+                )
+            
+            operator = op_match.group(1)
+            timedelta_str = op_match.group(2).strip()
+            
+            # Parse the timedelta
+            right_node = self._parse_timedelta_from_string(timedelta_str)
+            
+            # Build the BinaryOp node (left-associative: previous result op timedelta)
+            left_node = BinaryOp(operator, left_node, right_node)
+            
+            # Move to the next operation
+            remaining = remaining[op_match.end():].strip()
         
-        # Create the BinaryOp node
-        return BinaryOp(operator, left_node, right_node)
+        return left_node
     
     def _parse_timedelta_from_string(self, td_str):
         """

@@ -13,7 +13,7 @@ def extract_field_names(ast):
     Returns:
         Set of uppercase field names referenced in the query
     """
-    from remy.query.ast_nodes import Identifier, Compare, And, Or, Not, In
+    from remy.query.ast_nodes import Identifier, Compare, And, Or, Not, In, FunctionCall, BinaryOp
     
     field_names = set()
     
@@ -32,6 +32,14 @@ def extract_field_names(ast):
             visit(node.left)
             for value in node.values:
                 visit(value)
+        elif isinstance(node, FunctionCall):
+            # Visit all arguments of the function call
+            for arg in node.arguments:
+                visit(arg)
+        elif isinstance(node, BinaryOp):
+            # Visit both operands of binary operations
+            visit(node.left)
+            visit(node.right)
     
     visit(ast)
     return field_names

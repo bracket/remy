@@ -31,9 +31,7 @@ class MockNotecardIndex:
         Yields:
             Tuples of (value, label) for matching entries
         """
-        all_values = list(self.value_to_labels.keys())
-        
-        for value in all_values:
+        for value in self.value_to_labels.keys():
             # Exact match case
             if low is not null and high is not null and low == high:
                 if value == low:
@@ -55,9 +53,8 @@ class MockNotecardIndex:
                 continue
                 
             # Yield all labels for this value
-            if value in self.value_to_labels:
-                for label in self.value_to_labels[value]:
-                    yield (value, label)
+            for label in self.value_to_labels[value]:
+                yield (value, label)
 
 
 def test_function_call_parsing():

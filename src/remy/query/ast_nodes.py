@@ -201,3 +201,10 @@ class BinaryOp(ASTNode):
     operator: TypeLiteral['+', '-']
     left: ASTNode
     right: ASTNode
+
+
+@dataclass
+class FunctionCall(ASTNode):
+    """Represents a function call (e.g., intersect_by_label(A, B))."""
+    function_name: str
+    arguments: List[ASTNode]

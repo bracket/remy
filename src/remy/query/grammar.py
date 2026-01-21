@@ -31,13 +31,15 @@ QUERY_GRAMMAR = r"""
              | additive "+" primary  -> add_op
              | additive "-" primary  -> sub_op
 
-    ?primary: identifier
+    ?primary: function_call
+            | identifier
             | datetime_literal
             | date_literal
             | timedelta_literal
             | literal
             | "(" or_expr ")"
 
+    function_call: DOTTED_NAME "(" [or_expr ("," or_expr)*] ")"
     identifier: DOTTED_NAME
     literal: STRING | NUMBER | TRUE | FALSE | NULL
     datetime_literal: STRING DATETIME_CAST

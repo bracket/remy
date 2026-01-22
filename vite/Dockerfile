@@ -28,8 +28,8 @@ RUN if [ "$BUILD_MODE" = "compile" ]; then \
 
 # Restore mode: Extract pre-built interpreters from snapshot (fast)
 # This is the default mode used by standard builds
-RUN if [ "$BUILD_MODE" = "restore" ]; then \
-        --mount=type=bind,target=/mnt/build \
+RUN --mount=type=bind,target=/mnt/build \
+    if [ "$BUILD_MODE" = "restore" ]; then \
         cd / && tar -xjvf /mnt/build/root_asdf.tbz2; \
     fi
 

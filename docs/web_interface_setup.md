@@ -35,7 +35,7 @@ For developers who want to get started immediately:
 cd vite
 
 # 2. Start the development environment (uses pre-built snapshot)
-docker-compose -f dev-docker-compose.yml up -d
+docker-compose -f docker-compose.yml -f dev-docker-compose.yml up -d
 
 # 3. In a separate terminal, start the Flask API server
 cd ..
@@ -57,6 +57,8 @@ Before setting up the Remy web interface, ensure you have:
   - Docker Compose (version 1.29 or later)
 - **Git** (for cloning the repository)
 - **Python 3.12+** (for running the Flask backend locally)
+- **Flask** (Python web framework)
+  - Install with: `pip install flask`
 - At least **10 GB of free disk space** (for Docker images and builds)
 - **85+ minutes** for the initial Docker build (can be avoided with snapshot)
 
@@ -196,7 +198,7 @@ The development environment uses `dev-docker-compose.yml`, which provides:
 
 ```bash
 cd vite
-docker-compose -f dev-docker-compose.yml up -d
+docker-compose -f docker-compose.yml -f dev-docker-compose.yml up -d
 ```
 
 Or use the convenience script:
@@ -209,7 +211,7 @@ cd vite
 **Check the logs:**
 
 ```bash
-docker-compose -f dev-docker-compose.yml logs -f remy-vite
+docker-compose -f docker-compose.yml -f dev-docker-compose.yml logs -f remy-vite
 ```
 
 You should see output indicating that Vite is running on port 3000.
@@ -264,7 +266,7 @@ docker ps | grep remy-vite
 **View the Vite logs:**
 
 ```bash
-docker-compose -f dev-docker-compose.yml logs -f remy-vite
+docker-compose -f docker-compose.yml -f dev-docker-compose.yml logs -f remy-vite
 ```
 
 Look for output like:
@@ -440,8 +442,8 @@ Open http://localhost:5000 in your browser (note: port 5000, not 3000).
 
 3. **Restart the container:**
    ```bash
-   docker-compose -f dev-docker-compose.yml down
-   docker-compose -f dev-docker-compose.yml up -d
+   docker-compose -f docker-compose.yml -f dev-docker-compose.yml down
+   docker-compose -f docker-compose.yml -f dev-docker-compose.yml up -d
    ```
 
 4. **Check SELinux (Linux only):**
@@ -465,9 +467,9 @@ The development setup uses a bind-mounted volume for `node_modules` to avoid per
 
 1. **Clear the node_modules cache:**
    ```bash
-   docker-compose -f dev-docker-compose.yml down
+   docker-compose -f docker-compose.yml -f dev-docker-compose.yml down
    docker volume rm vite_node_modules  # If using named volume
-   docker-compose -f dev-docker-compose.yml up -d
+   docker-compose -f docker-compose.yml -f dev-docker-compose.yml up -d
    ```
 
 2. **Reinstall packages inside the container:**
@@ -481,7 +483,7 @@ The development setup uses a bind-mounted volume for `node_modules` to avoid per
 3. **Rebuild the Docker image:**
    ```bash
    docker-compose build --no-cache remy-vite
-   docker-compose -f dev-docker-compose.yml up -d
+   docker-compose -f docker-compose.yml -f dev-docker-compose.yml up -d
    ```
 
 ### Common Errors
@@ -597,9 +599,9 @@ cd vite && ./vite_build.sh                    # Build static assets
 python -m remy.www --cache ~/notes            # Serve production app
 
 # Docker
-docker-compose -f dev-docker-compose.yml up -d      # Start dev environment
-docker-compose -f dev-docker-compose.yml down       # Stop dev environment
-docker-compose -f dev-docker-compose.yml logs -f    # View logs
+docker-compose -f docker-compose.yml -f dev-docker-compose.yml up -d      # Start dev environment
+docker-compose -f docker-compose.yml -f dev-docker-compose.yml down       # Stop dev environment
+docker-compose -f docker-compose.yml -f dev-docker-compose.yml logs -f    # View logs
 docker exec -it <container-id> sh                   # Access container shell
 
 # Debugging

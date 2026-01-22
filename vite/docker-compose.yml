@@ -31,7 +31,12 @@ services:
     command: |
       'sh -s <<EOF
         echo "Creating snapshot tarball..."
-        tar -cvjf /mnt/build/root_asdf.tbz2 /root/.asdf /root/.tool-versions
+        # Create tarball with .asdf directory and .tool-versions if it exists
+        if [ -f /root/.tool-versions ]; then
+          tar -cvjf /mnt/build/root_asdf.tbz2 /root/.asdf /root/.tool-versions
+        else
+          tar -cvjf /mnt/build/root_asdf.tbz2 /root/.asdf
+        fi
         echo "Snapshot created successfully at /mnt/build/root_asdf.tbz2"
         exit 0
       EOF'

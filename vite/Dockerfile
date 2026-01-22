@@ -30,6 +30,12 @@ RUN if [ "$BUILD_MODE" = "compile" ]; then \
 # This is the default mode used by standard builds
 RUN --mount=type=bind,target=/mnt/build \
     if [ "$BUILD_MODE" = "restore" ]; then \
+        if [ ! -f /mnt/build/root_asdf.tbz2 ]; then \
+            echo "ERROR: Snapshot file root_asdf.tbz2 not found in vite/ directory."; \
+            echo "Please run: docker-compose run --rm snapshot-builder"; \
+            echo "This will take approximately 85 minutes to compile Python and Node.js."; \
+            exit 1; \
+        fi; \
         cd / && tar -xjvf /mnt/build/root_asdf.tbz2; \
     fi
 

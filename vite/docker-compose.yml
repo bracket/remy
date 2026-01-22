@@ -5,6 +5,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: remy-vite
+      args:
+        BUILD_MODE: restore
     entrypoint: /bin/sh -c
     command: |
       'sh -s <<EOF
@@ -12,4 +14,24 @@ services:
         cd /app
         npm install
         npx -c "vite build"
+      EOF'
+
+  snapshot-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-vite
+      args:
+        BUILD_MODE: compile
+    volumes:
+      - type: bind
+        source: .
+        target: /mnt/build
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        echo "Creating snapshot tarball..."
+        tar -cvjf /mnt/build/root_asdf.tbz2 /root/.asdf /root/.tool-versions
+        echo "Snapshot created successfully at /mnt/build/root_asdf.tbz2"
+        exit 0
       EOF'

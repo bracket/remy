@@ -31,6 +31,10 @@ This guide explains how to set up, build, and run the Remy web interface locally
 For developers who want to get started immediately:
 
 ```bash
+# 0. Generate the snapshot (first time only, takes ~85 minutes)
+cd vite
+docker-compose run --rm snapshot-builder
+
 # 1. Navigate to the vite directory
 cd vite
 
@@ -45,7 +49,7 @@ python -m remy.www --cache /path/to/your/notecards
 # Open http://localhost:3000 in your browser
 ```
 
-**Note**: The first build will take approximately 85 minutes if no snapshot exists. See [Initial Docker Build](#initial-docker-build) for details.
+**Note**: The first time you set up the environment, you need to generate the snapshot using `docker-compose run --rm snapshot-builder`. This takes approximately 85 minutes. Subsequent builds will be much faster (a few minutes) as they reuse the snapshot.
 
 ---
 
@@ -124,64 +128,70 @@ The snapshot is a compressed tarball (`root_asdf.tbz2`) that contains:
 
 **How it works:**
 
-1. **Without snapshot**: The Dockerfile builds Python and Node.js from scratch (see the commented-out RUN command in the Dockerfile at lines 24-28)
-2. **With snapshot**: The Dockerfile extracts the pre-built interpreters from `root_asdf.tbz2` (see the RUN command with bind mount at lines 30-31)
+The Dockerfile supports two build modes via the `BUILD_MODE` argument:
+
+1. **`BUILD_MODE=compile`**: Builds Python and Node.js from scratch (takes approximately 85 minutes)
+   - Used by the `snapshot-builder` service to create the snapshot tarball
+   - Compiles everything from source for maximum compatibility and optimization
+
+2. **`BUILD_MODE=restore`** (default): Extracts pre-built interpreters from `root_asdf.tbz2`
+   - Used by standard builds for fast image creation
+   - Requires the snapshot file to be present in the `vite/` directory
 
 The snapshot file should be placed in the `vite/` directory and will be bind-mounted during the Docker build.
 
+**Automated Snapshot Creation:**
+
+The `snapshot-builder` Docker Compose service automates the snapshot creation process:
+- Builds the image in `compile` mode
+- Mounts the `vite/` directory so the container can write the snapshot file
+- Creates `root_asdf.tbz2` containing `/root/.asdf` and `/root/.tool-versions`
+- Exits automatically when complete
+
+You no longer need to manually edit the Dockerfile or run external scripts.
+
 ### Creating a Snapshot
 
-If you need to create a new snapshot (e.g., after updating Python or Node.js versions):
+The snapshot mechanism is now automated via Docker Compose. You no longer need to manually edit the Dockerfile or run external scripts.
 
-1. **Build the container from scratch** by editing `vite/Dockerfile`:
+**To create a new snapshot** (e.g., after updating Python or Node.js versions):
 
-   Find and uncomment the RUN command that installs Python and Node.js (lines 24-28):
-   ```dockerfile
-   RUN . /asdf/asdf.sh \
-       && asdf install python 3.12.2 \
-       && asdf global python 3.12.2 \
-       && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2 \
-       && asdf global nodejs 21.6.2
-   ```
-
-   Find and comment out the RUN command that extracts the snapshot (lines 30-31):
-   ```dockerfile
-   # RUN --mount=type=bind,target=/mnt/build \
-   #     cd / && tar -xjvf /mnt/build/root_asdf.tbz2
-   ```
-
-2. **Start the container**:
+1. **Run the snapshot-builder service**:
 
    ```bash
    cd vite
-   docker-compose up -d
+   docker-compose run --rm snapshot-builder
    ```
 
-   This will take approximately 85 minutes.
+   This will:
+   - Build Python 3.12.2 and Node.js 21.6.2 from source (takes approximately 85 minutes)
+   - Create the `root_asdf.tbz2` snapshot file in the `vite/` directory
+   - Exit automatically when complete
 
-3. **Create the snapshot** using the `tar_snapshot.sh` script:
+2. **Verify the snapshot was created**:
 
    ```bash
-   # Get the container ID
-   docker ps | grep remy-vite
-
-   # Run the snapshot script
-   ./tar_snapshot.sh <container-id>
+   ls -lh vite/root_asdf.tbz2
    ```
 
-   This creates `root_asdf.tbz2` in the current directory.
+   You should see a file approximately 200-300 MB in size.
 
-4. **Restore the Dockerfile** to use the snapshot (revert your changes from step 1)
-
-5. **Rebuild** to verify the snapshot works:
+3. **Use the snapshot in subsequent builds**:
 
    ```bash
-   docker-compose down
-   docker-compose build
-   docker-compose up -d
+   docker-compose build remy-vite
    ```
 
-   This should complete in a few minutes instead of 85 minutes.
+   This should complete in a few minutes instead of 85 minutes, as it will restore from the snapshot.
+
+**Note**: The snapshot file (`vite/root_asdf.tbz2`) is excluded from version control via `.gitignore`. Team members should either:
+- Generate their own snapshot using the `snapshot-builder` service
+- Obtain the snapshot file from a shared location (e.g., cloud storage)
+
+**When to refresh the snapshot:**
+- After updating Python or Node.js versions in the Dockerfile
+- After adding new asdf plugins or tools
+- If you encounter issues with the existing snapshot
 
 ---
 
@@ -508,10 +518,18 @@ sudo usermod -aG docker $USER
 
 **Solution**: 
 
-Either:
-1. Obtain the `root_asdf.tbz2` snapshot file from another developer
-2. Create a new snapshot following the [Creating a Snapshot](#creating-a-snapshot) steps
-3. Or modify the Dockerfile to build from scratch (see [Initial Docker Build](#initial-docker-build))
+Generate the snapshot using the automated snapshot-builder service:
+
+```bash
+cd vite
+docker-compose run --rm snapshot-builder
+```
+
+This will take approximately 85 minutes but only needs to be done once (or when versions change).
+
+Alternatively, you can:
+1. Obtain the `root_asdf.tbz2` snapshot file from another developer or shared storage
+2. Place it in the `vite/` directory
 
 #### `404 Not Found` when accessing API
 
@@ -590,6 +608,9 @@ sudo sysctl -p
 ### Common Commands
 
 ```bash
+# Snapshot Management
+cd vite && docker-compose run --rm snapshot-builder  # Create/refresh snapshot (~85 min)
+
 # Development
 cd vite && ./vite_serve.sh                    # Start Vite dev server
 python -m remy.www --cache ~/notes --host 0.0.0.0  # Start Flask API

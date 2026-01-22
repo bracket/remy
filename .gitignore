@@ -33,3 +33,6 @@ Thumbs.db
 
 # Project-specific directories
 scratch/
+
+# Docker snapshot artifacts
+vite/root_asdf.tbz2

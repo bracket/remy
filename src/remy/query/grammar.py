@@ -58,7 +58,7 @@ QUERY_GRAMMAR = r"""
     FALSE.2: /\bfalse\b/i
     NULL.2: /\bnull\b/i
 
-    DOTTED_NAME: /[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
+    DOTTED_NAME: /@?[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
 
     STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
 

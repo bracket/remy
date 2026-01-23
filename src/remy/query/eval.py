@@ -92,6 +92,8 @@ def _evaluate(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> EvalRe
         return _evaluate_or(ast, field_indices)
     elif isinstance(ast, FunctionCall):
         return _evaluate_function_call(ast, field_indices)
+    elif isinstance(ast, Identifier):
+        return _evaluate_identifier(ast, field_indices)
     elif isinstance(ast, Not):
         raise RemyError("NOT operator is not yet supported in query evaluation")
     elif isinstance(ast, In):
@@ -269,6 +271,55 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     
     # This should never be reached due to the operator validation above
     raise RemyError(f"Unexpected operator: {ast.operator}")
+
+
+def _evaluate_identifier(ast: Identifier, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """
+    Evaluate a bare identifier to return all pairs from that index.
+    
+    This allows queries like: join_by_value_to_label(previous, tags="remy")
+    where 'previous' references the entire PREVIOUS index.
+    
+    Special handling for @id pseudo-index which contains (label, label) pairs
+    for all notecard primary labels.
+    
+    Args:
+        ast: Identifier AST node
+        field_indices: Dictionary mapping uppercase field names to NotecardIndex objects
+    
+    Returns:
+        PairSet containing all pairs from the referenced index
+    
+    Raises:
+        RemyError: If the identifier doesn't reference a known index
+    """
+    field_name = ast.name.upper()
+    
+    # Handle @id pseudo-index
+    if field_name == '@ID':
+        # Create a PairSet with (primary_label, primary_label) for all cards
+        result = create_pairset()
+        # Get all primary labels from any index (they all have access to the cache)
+        if field_indices:
+            # Get the first index to access the notecard cache
+            any_index = next(iter(field_indices.values()))
+            for label in any_index.notecard_cache.primary_labels:
+                # Add (label, label) pair with type prefix
+                typed_value = (id(type(label)), label)
+                result.add((typed_value, label))
+        return result
+    
+    # Regular field index
+    if field_name not in field_indices:
+        raise RemyError(
+            f"Identifier '{ast.name}' does not reference a known field index. "
+            f"Available indices: {', '.join(sorted(field_indices.keys()))}"
+        )
+    
+    index = field_indices[field_name]
+    
+    # Return all pairs from the index (no filtering)
+    return create_pairset(index.find(low=null, high=null))
 
 
 def _evaluate_and(ast: And, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:

@@ -11,7 +11,8 @@ def extract_field_names(ast):
         ast: The query AST node
     
     Returns:
-        Set of uppercase field names referenced in the query
+        Set of uppercase field names referenced in the query.
+        Note: @id pseudo-index is excluded as it's synthesized dynamically.
     """
     from remy.query.ast_nodes import Identifier, Compare, And, Or, Not, In, FunctionCall, BinaryOp
     
@@ -19,7 +20,9 @@ def extract_field_names(ast):
     
     def visit(node):
         if isinstance(node, Identifier):
-            field_names.add(node.name.upper())
+            # Skip @id pseudo-index as it's synthesized
+            if node.name.upper() != '@ID':
+                field_names.add(node.name.upper())
         elif isinstance(node, Compare):
             visit(node.left)
             visit(node.right)

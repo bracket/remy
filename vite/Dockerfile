@@ -9,7 +9,8 @@ RUN apk add bash curl git \
     && git clone https://github.com/asdf-vm/asdf.git /asdf --branch v0.14.0
 
 RUN . /asdf/asdf.sh \
-    && apk add build-base sqlite zlib-dev bzip2-dev openssl-dev xz-dev linux-headers \
+    && apk add build-base sqlite sqlite-dev zlib-dev bzip2-dev openssl-dev xz-dev linux-headers \
+               ncurses-dev libffi-dev readline-dev \
     && asdf plugin add python
 
 RUN . /asdf/asdf.sh \
@@ -20,10 +21,10 @@ RUN . /asdf/asdf.sh \
 # This is used by the snapshot-builder service to create root_asdf.tbz2
 RUN if [ "$BUILD_MODE" = "compile" ]; then \
         . /asdf/asdf.sh \
-        && asdf install python 3.12.2 \
-        && asdf global python 3.12.2 \
-        && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2 \
-        && asdf global nodejs 21.6.2; \
+        && asdf install python 3.13.1 \
+        && asdf global python 3.13.1 \
+        && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 22.13.0 \
+        && asdf global nodejs 22.13.0; \
     fi
 
 # Restore mode: Extract pre-built interpreters from snapshot (fast)

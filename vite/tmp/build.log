@@ -1,0 +1,237 @@
+time="2026-01-23T11:43:26-08:00" level=warning msg="/Users/bracket/tmp/remy/vite/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Network vite_default Creating 
+ Network vite_default Created 
+ Image vite-snapshot-builder Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 628B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.77kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/alpine:latest
+#3 ...
+
+#4 [auth] library/alpine:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/alpine:latest
+#3 DONE 0.8s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 [remy-vite 1/8] FROM docker.io/library/alpine:latest@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62
+#6 resolve docker.io/library/alpine:latest@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62 done
+#6 CACHED
+
+#7 [internal] load build context
+#7 transferring context: 60.32kB done
+#7 DONE 0.0s
+
+#8 [remy-vite 2/8] RUN apk add bash curl git     && git clone https://github.com/asdf-vm/asdf.git /asdf --branch v0.14.0
+#8 0.940 ( 1/18) Installing ncurses-terminfo-base (6.5_p20251123-r0)
+#8 0.954 ( 2/18) Installing libncursesw (6.5_p20251123-r0)
+#8 0.981 ( 3/18) Installing readline (8.3.1-r0)
+#8 1.006 ( 4/18) Installing bash (5.3.3-r1)
+#8 1.061   Executing bash-5.3.3-r1.post-install
+#8 1.062 ( 5/18) Installing brotli-libs (1.2.0-r0)
+#8 1.119 ( 6/18) Installing c-ares (1.34.6-r0)
+#8 1.141 ( 7/18) Installing libunistring (1.4.1-r0)
+#8 1.222 ( 8/18) Installing libidn2 (2.3.8-r0)
+#8 1.244 ( 9/18) Installing nghttp2-libs (1.68.0-r0)
+#8 1.262 (10/18) Installing nghttp3 (1.13.1-r0)
+#8 1.281 (11/18) Installing libpsl (0.21.5-r3)
+#8 1.302 (12/18) Installing zstd-libs (1.5.7-r2)
+#8 1.343 (13/18) Installing libcurl (8.17.0-r1)
+#8 1.382 (14/18) Installing curl (8.17.0-r1)
+#8 1.413 (15/18) Installing libexpat (2.7.3-r0)
+#8 1.431 (16/18) Installing pcre2 (10.47-r0)
+#8 1.475 (17/18) Installing git (2.52.0-r0)
+#8 1.753 (18/18) Installing git-init-template (2.52.0-r0)
+#8 1.768 Executing busybox-1.37.0-r30.trigger
+#8 1.773 OK: 25.7 MiB in 34 packages
+#8 1.797 Cloning into '/asdf'...
+#8 3.298 Note: switching to 'ccdd47df9b73d0a22235eb06ad4c48eb57360832'.
+#8 3.298 
+#8 3.298 You are in 'detached HEAD' state. You can look around, make experimental
+#8 3.298 changes and commit them, and you can discard any commits you make in this
+#8 3.298 state without impacting any branches by switching back to a branch.
+#8 3.298 
+#8 3.298 If you want to create a new branch to retain commits you create, you may
+#8 3.298 do so (now or later) by using -c with the switch command. Example:
+#8 3.298 
+#8 3.298   git switch -c <new-branch-name>
+#8 3.298 
+#8 3.298 Or undo this operation with:
+#8 3.298 
+#8 3.298   git switch -
+#8 3.298 
+#8 3.298 Turn off this advice by setting config variable advice.detachedHead to false
+#8 3.298 
+#8 DONE 3.3s
+
+#9 [remy-vite 3/8] RUN . /asdf/asdf.sh     && apk add build-base sqlite zlib-dev bzip2-dev openssl-dev xz-dev linux-headers     && asdf plugin add python
+#9 0.207 ( 1/30) Installing libgcc (15.2.0-r2)
+#9 0.325 ( 2/30) Installing jansson (2.14.1-r0)
+#9 0.354 ( 3/30) Installing libstdc++ (15.2.0-r2)
+#9 0.463 ( 4/30) Installing binutils (2.45.1-r0)
+#9 0.711 ( 5/30) Installing libmagic (5.46-r2)
+#9 0.769 ( 6/30) Installing file (5.46-r2)
+#9 0.789 ( 7/30) Installing libgomp (15.2.0-r2)
+#9 0.822 ( 8/30) Installing libatomic (15.2.0-r2)
+#9 0.898 ( 9/30) Installing gmp (6.3.0-r4)
+#9 0.933 (10/30) Installing isl26 (0.26-r1)
+#9 1.012 (11/30) Installing mpfr4 (4.2.2-r0)
+#9 1.055 (12/30) Installing mpc1 (1.3.1-r1)
+#9 1.078 (13/30) Installing gcc (15.2.0-r2)
+#9 5.321 (14/30) Installing libstdc++-dev (15.2.0-r2)
+#9 5.641 (15/30) Installing musl-dev (1.2.5-r21)
+#9 5.837 (16/30) Installing g++ (15.2.0-r2)
+#9 7.185 (17/30) Installing make (4.4.1-r3)
+#9 7.215 (18/30) Installing fortify-headers (1.1-r5)
+#9 7.235 (19/30) Installing patch (2.8-r0)
+#9 7.263 (20/30) Installing build-base (0.5-r3)
+#9 7.263 (21/30) Installing libbz2 (1.0.8-r6)
+#9 7.286 (22/30) Installing pkgconf (2.5.1-r0)
+#9 7.315 (23/30) Installing bzip2-dev (1.0.8-r6)
+#9 7.343 (24/30) Installing linux-headers (6.16.12-r0)
+#9 7.482 (25/30) Installing openssl-dev (3.5.4-r0)
+#9 7.530 (26/30) Installing sqlite (3.51.2-r0)
+#9 7.620 (27/30) Installing xz-libs (5.8.2-r0)
+#9 7.654 (28/30) Installing xz (5.8.2-r0)
+#9 7.743 (29/30) Installing xz-dev (5.8.2-r0)
+#9 7.782 (30/30) Installing zlib-dev (1.3.1-r2)
+#9 7.809 Executing busybox-1.37.0-r30.trigger
+#9 7.823 OK: 274.5 MiB in 64 packages
+#9 7.856 initializing plugin repository...Cloning into '/root/.asdf/repository'...
+#9 DONE 9.6s
+
+#10 [remy-vite 4/8] RUN . /asdf/asdf.sh     && apk add gawk gpg     && asdf plugin add nodejs https://github.com/asdf-vm/asdf-nodejs.git
+#10 0.241 ( 1/20) Installing gawk (5.3.2-r2)
+#10 0.386 ( 2/20) Installing libgpg-error (1.55-r0)
+#10 0.408 ( 3/20) Installing libassuan (3.0.2-r0)
+#10 0.432 ( 4/20) Installing pinentry (1.3.2-r0)
+#10 0.449   Executing pinentry-1.3.2-r0.post-install
+#10 0.451 ( 5/20) Installing libgcrypt (1.11.2-r0)
+#10 0.516 ( 6/20) Installing gnupg-gpgconf (2.4.9-r0)
+#10 0.546 ( 7/20) Installing nettle (3.10.2-r0)
+#10 0.599 ( 8/20) Installing libffi (3.5.2-r0)
+#10 0.618 ( 9/20) Installing libtasn1 (4.21.0-r0)
+#10 0.646 (10/20) Installing p11-kit (0.25.5-r2)
+#10 0.693 (11/20) Installing gnutls (3.8.11-r0)
+#10 0.772 (12/20) Installing libksba (1.6.7-r0)
+#10 0.811 (13/20) Installing gdbm (1.26-r0)
+#10 0.828 (14/20) Installing libsasl (2.1.28-r9)
+#10 0.851 (15/20) Installing libldap (2.6.10-r0)
+#10 0.884 (16/20) Installing npth (1.8-r0)
+#10 0.905 (17/20) Installing gnupg-dirmngr (2.4.9-r0)
+#10 0.951 (18/20) Installing sqlite-libs (3.51.2-r0)
+#10 1.025 (19/20) Installing gnupg-keyboxd (2.4.9-r0)
+#10 1.051 (20/20) Installing gpg (2.4.9-r0)
+#10 1.116 Executing busybox-1.37.0-r30.trigger
+#10 1.127 OK: 286.4 MiB in 84 packages
+#10 DONE 2.0s
+
+#11 [remy-vite 5/8] RUN if [ "compile" = "compile" ]; then         . /asdf/asdf.sh         && asdf install python 3.12.2         && asdf global python 3.12.2         && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2         && asdf global nodejs 21.6.2;     fi
+#11 0.111 Downloading python-build...
+#11 0.113 Cloning into '/root/.asdf/plugins/python/pyenv'...
+#11 2.182 python-build 3.12.2 /root/.asdf/installs/python/3.12.2
+#11 2.198 Downloading Python-3.12.2.tar.xz...
+#11 2.198 -> https://www.python.org/ftp/python/3.12.2/Python-3.12.2.tar.xz
+#11 5.057 Installing Python-3.12.2...
+#11 31.90 Traceback (most recent call last):
+#11 31.90   File "<string>", line 1, in <module>
+#11 31.90   File "/root/.asdf/installs/python/3.12.2/lib/python3.12/curses/__init__.py", line 13, in <module>
+#11 31.90     from _curses import *
+#11 31.90 ModuleNotFoundError: No module named '_curses'
+#11 31.90 WARNING: The Python curses extension was not compiled. Missing the ncurses lib?
+#11 31.91 Traceback (most recent call last):
+#11 31.91   File "<string>", line 1, in <module>
+#11 31.91   File "/root/.asdf/installs/python/3.12.2/lib/python3.12/ctypes/__init__.py", line 8, in <module>
+#11 31.91     from _ctypes import Union, Structure, Array
+#11 31.91 ModuleNotFoundError: No module named '_ctypes'
+#11 31.91 WARNING: The Python ctypes extension was not compiled. Missing the libffi lib?
+#11 31.91 Traceback (most recent call last):
+#11 31.91   File "<string>", line 1, in <module>
+#11 31.91 ModuleNotFoundError: No module named 'readline'
+#11 31.91 WARNING: The Python readline extension was not compiled. Missing the GNU readline lib?
+#11 31.93 Traceback (most recent call last):
+#11 31.93   File "<string>", line 1, in <module>
+#11 31.93   File "/root/.asdf/installs/python/3.12.2/lib/python3.12/sqlite3/__init__.py", line 57, in <module>
+#11 31.93     from sqlite3.dbapi2 import *
+#11 31.93   File "/root/.asdf/installs/python/3.12.2/lib/python3.12/sqlite3/dbapi2.py", line 27, in <module>
+#11 31.93     from _sqlite3 import *
+#11 31.93 ModuleNotFoundError: No module named '_sqlite3'
+#11 31.94 WARNING: The Python sqlite3 extension was not compiled. Missing the SQLite3 lib?
+#11 32.84 Installed Python-3.12.2 to /root/.asdf/installs/python/3.12.2
+#11 32.89 asdf: Warn: You have configured asdf to preserve downloaded files (with always_keep_download=yes or --keep-download). But
+#11 32.89 asdf: Warn: the current plugin (python) does not support that. Downloaded files will not be preserved.
+#11 32.96 Cloning node-build...
+#11 34.65 To follow progress, use 'tail -f /tmp/node-build.20260123194416.12149.log' or pass --verbose
+#11 34.65 Downloading node-v21.6.2.tar.gz...
+#11 34.86 -> https://nodejs.org/dist/v21.6.2/node-v21.6.2.tar.gz
+#11 43.60 
+#11 43.60 WARNING: node-v21.6.2 is past its end of life and is now unsupported.
+#11 43.60 It no longer receives bug fixes or security updates.
+#11 43.60 
+#11 43.60 Installing node-v21.6.2...
+#11 130.3 
+#11 130.3 BUILD FAILED (Alpine Linux 3.23.2 using node-build 5.4.24)
+#11 130.3 
+#11 130.3 Inspect or clean up the working tree at /tmp/node-build.20260123194416.12149.DMcdmE
+#11 130.3 Results logged to /tmp/node-build.20260123194416.12149.log
+#11 130.3 
+#11 130.3 Last 10 log lines:
+#11 130.3 ../deps/simdjson/simdjson.h: In member function 'void simdjson::internal::base_formatter<formatter>::call_print_space()':
+#11 130.3 ../deps/simdjson/simdjson.h:6164:13: error: 'class simdjson::internal::base_formatter<formatter>' has no member named 'print_space'; did you mean 'call_print_space'? [-Wtemplate-body]
+#11 130.3  6164 |       this->print_space();
+#11 130.3       |             ^~~~~~~~~~~
+#11 130.3       |             call_print_space
+#11 130.3 make[1]: *** [libnode.target.mk:474: /tmp/node-build.20260123194416.12149.DMcdmE/node-v21.6.2/out/Release/obj.target/libnode/src/node_metadata.o] Error 1
+#11 130.3 make[1]: *** Waiting for unfinished jobs....
+#11 130.3 make[1]: *** [libnode.target.mk:474: /tmp/node-build.20260123194416.12149.DMcdmE/node-v21.6.2/out/Release/obj.target/libnode/src/node_modules.o] Error 1
+#11 130.3 rm 1da50bc627990ca6aa95681e1b9bbadb455b0198.intermediate 12a2da88af99d7d25c5b99aaf55c8aa041b58019.intermediate
+#11 130.3 make: *** [Makefile:134: node] Error 2
+#11 ERROR: process "/bin/sh -c if [ \"$BUILD_MODE\" = \"compile\" ]; then         . /asdf/asdf.sh         && asdf install python 3.12.2         && asdf global python 3.12.2         && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2         && asdf global nodejs 21.6.2;     fi" did not complete successfully: exit code: 1
+------
+ > [remy-vite 5/8] RUN if [ "compile" = "compile" ]; then         . /asdf/asdf.sh         && asdf install python 3.12.2         && asdf global python 3.12.2         && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2         && asdf global nodejs 21.6.2;     fi:
+130.3 ../deps/simdjson/simdjson.h: In member function 'void simdjson::internal::base_formatter<formatter>::call_print_space()':
+130.3 ../deps/simdjson/simdjson.h:6164:13: error: 'class simdjson::internal::base_formatter<formatter>' has no member named 'print_space'; did you mean 'call_print_space'? [-Wtemplate-body]
+130.3  6164 |       this->print_space();
+130.3       |             ^~~~~~~~~~~
+130.3       |             call_print_space
+130.3 make[1]: *** [libnode.target.mk:474: /tmp/node-build.20260123194416.12149.DMcdmE/node-v21.6.2/out/Release/obj.target/libnode/src/node_metadata.o] Error 1
+130.3 make[1]: *** Waiting for unfinished jobs....
+130.3 make[1]: *** [libnode.target.mk:474: /tmp/node-build.20260123194416.12149.DMcdmE/node-v21.6.2/out/Release/obj.target/libnode/src/node_modules.o] Error 1
+130.3 rm 1da50bc627990ca6aa95681e1b9bbadb455b0198.intermediate 12a2da88af99d7d25c5b99aaf55c8aa041b58019.intermediate
+130.3 make: *** [Makefile:134: node] Error 2
+------
+Dockerfile:21
+
+--------------------
+
+  20 |     # This is used by the snapshot-builder service to create root_asdf.tbz2
+
+  21 | >>> RUN if [ "$BUILD_MODE" = "compile" ]; then \
+
+  22 | >>>         . /asdf/asdf.sh \
+
+  23 | >>>         && asdf install python 3.12.2 \
+
+  24 | >>>         && asdf global python 3.12.2 \
+
+  25 | >>>         && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2 \
+
+  26 | >>>         && asdf global nodejs 21.6.2; \
+
+  27 | >>>     fi
+
+  28 |     
+
+--------------------
+
+failed to solve: process "/bin/sh -c if [ \"$BUILD_MODE\" = \"compile\" ]; then         . /asdf/asdf.sh         && asdf install python 3.12.2         && asdf global python 3.12.2         && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2         && asdf global nodejs 21.6.2;     fi" did not complete successfully: exit code: 1
+

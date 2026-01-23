@@ -12,7 +12,7 @@ from remy.exceptions import RemyError
 from remy.query.grammar import get_parser
 from remy.query.ast_nodes import (
     Literal, Identifier, Compare, In, And, Or, Not,
-    DateTimeLiteral, DateLiteral, Timedelta, TimedeltaLiteral, BinaryOp
+    DateTimeLiteral, DateLiteral, Timedelta, TimedeltaLiteral, BinaryOp, FunctionCall
 )
 
 
@@ -407,6 +407,17 @@ class QueryTransformer(Transformer):
         unit = unit_map[unit_str]
         
         return TimedeltaLiteral(Timedelta(value, unit))
+
+    def function_call(self, args):
+        """Transform function call expression."""
+        # First argument is the function name token
+        func_name_token = args[0]
+        func_name = str(func_name_token)
+        
+        # Remaining arguments are the function arguments (AST nodes)
+        func_args = args[1:] if len(args) > 1 else []
+        
+        return FunctionCall(func_name, func_args)
 
 
 def parse_query(query):

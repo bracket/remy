@@ -22,8 +22,8 @@ RUN . /asdf/asdf.sh \
 # MAKE_OPTS can be set to control parallelism (e.g., -j2 to limit to 2 cores)
 RUN if [ "$BUILD_MODE" = "compile" ]; then \
         . /asdf/asdf.sh \
-        && asdf install python 3.14.2 \
-        && asdf global python 3.14.2 \
+        && asdf install python 3.13.11 \
+        && asdf global python 3.13.11 \
         && ASDF_NODEJS_FORCE_COMPILE=1 MAKE_OPTS="${MAKE_OPTS:--j2}" asdf install nodejs 24.13.0 \
         && asdf global nodejs 24.13.0; \
     fi

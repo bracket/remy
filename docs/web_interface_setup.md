@@ -100,7 +100,7 @@ The Remy web interface consists of three main components:
 
 3. **Docker Environment** (`vite/Dockerfile`)
    - Alpine Linux-based container
-   - Builds Python 3.14.2 and Node.js 24.13.0 from source using asdf
+   - Builds Python 3.13.11 and Node.js 24.13.0 from source using asdf
    - Provides a consistent development and build environment
 
 ### Communication Flow
@@ -119,7 +119,7 @@ In development, Vite proxies API requests from `/api/*` to the Flask backend run
 
 ### Understanding the Build Time
 
-The Docker container builds Python 3.14.2 and Node.js 24.13.0 from source using [asdf](https://asdf-vm.com/) version manager. This approach provides:
+The Docker container builds Python 3.13.11 and Node.js 24.13.0 from source using [asdf](https://asdf-vm.com/) version manager. This approach provides:
 
 - **Full control** over the build process and optimization flags
 - **Consistency** across different environments
@@ -132,7 +132,7 @@ However, compiling Node.js from source takes approximately **85 minutes** on a t
 To avoid rebuilding the environment every time, Remy uses a **snapshot mechanism** that caches the compiled Python and Node.js interpreters.
 
 The snapshot is a compressed tarball (`root_asdf.tbz2`) that contains:
-- Compiled Python 3.14.2 interpreter and packages
+- Compiled Python 3.13.11 interpreter and packages
 - Compiled Node.js 24.13.0 interpreter and npm
 - asdf configuration and tool versions
 
@@ -176,7 +176,7 @@ The snapshot mechanism is now automated via Docker Compose. You no longer need t
    ```
 
    This will:
-   - Build Python 3.14.2 and Node.js 24.13.0 from source (takes approximately 85 minutes)
+   - Build Python 3.13.11 and Node.js 24.13.0 from source (takes approximately 85 minutes)
    - Create the `root_asdf.tbz2` snapshot file in the `vite/` directory
    - Exit automatically when complete
 

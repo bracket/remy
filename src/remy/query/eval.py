@@ -55,24 +55,34 @@ def _resolve_macros(ast: ASTNode) -> ASTNode:
     if not isinstance(ast, StatementList):
         return ast
     
-    # Separate macro definitions from the main expression
+    # Process statements and build macro definitions
+    # Only the last statement can be unnamed (becomes @main if not already defined)
     macro_defs = {}
-    main_expr = None
     
-    for stmt in ast.statements:
+    for i, stmt in enumerate(ast.statements):
         if isinstance(stmt, MacroDefinition):
             if stmt.name in macro_defs:
                 raise RemyError(f"Duplicate macro definition: @{stmt.name}")
             macro_defs[stmt.name] = stmt
         else:
-            # The last non-macro statement becomes @main
-            main_expr = stmt
+            # This is an unnamed expression statement
+            # Only the last statement can be unnamed
+            if i < len(ast.statements) - 1:
+                raise RemyError(
+                    "Only the last statement can be unnamed. "
+                    "All other statements must be macro definitions."
+                )
+            # The last unnamed statement defines @main (if not already defined)
+            if 'main' in macro_defs:
+                raise RemyError("Cannot have both an explicit @main definition and an unnamed final statement")
+            # Create an implicit @main macro definition
+            macro_defs['main'] = MacroDefinition('main', [], stmt)
     
-    # If no main expression, error
-    if main_expr is None:
-        raise RemyError("Query must have at least one expression statement (implicit @main)")
+    # Check that @main exists (either explicit or implicit)
+    if 'main' not in macro_defs:
+        raise RemyError("Query must have a @main macro (either explicit or implicit from the last statement)")
     
-    # Now expand all macro references in the main expression
+    # Now expand all macro references starting from @main
     # We need to track what we're currently expanding to detect circular dependencies
     expansion_stack = []
     
@@ -158,8 +168,9 @@ def _resolve_macros(ast: ASTNode) -> ASTNode:
             # Leaf nodes (literals, identifiers, etc.) - return as-is
             return node
     
-    # Expand all macros in the main expression
-    return expand_macros(main_expr)
+    # Expand all macros starting from @main
+    main_macro = macro_defs['main']
+    return expand_macros(main_macro.body)
 
 
 def _substitute_params(node: ASTNode, param_map: Dict[str, ASTNode], depth: int = 0) -> ASTNode:

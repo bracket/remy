@@ -111,7 +111,8 @@ def test_resolve_parametric_macro():
 
 def test_forward_reference():
     """Test that macros can be used before they're defined."""
-    ast = parse_query("@work; @work := tags='work';")
+    # @main uses @work, which is defined after @main
+    ast = parse_query("@main := @work; @work := tags='work';")
     resolved = _resolve_macros(ast)
     
     assert isinstance(resolved, Compare)
@@ -240,7 +241,40 @@ def test_macro_argument_is_expression():
 def test_no_main_expression_error():
     """Test that queries with only macro definitions raise an error."""
     ast = parse_query("@work := tags='work';")
-    with pytest.raises(RemyError, match="at least one expression statement"):
+    with pytest.raises(RemyError, match="must have a @main macro"):
+        _resolve_macros(ast)
+
+
+def test_explicit_main_macro():
+    """Test that @main can be explicitly defined."""
+    ast = parse_query("@main := tags='work';")
+    resolved = _resolve_macros(ast)
+    assert isinstance(resolved, Compare)
+    assert resolved.left.name == 'tags'
+    assert resolved.right.value == 'work'
+
+
+def test_explicit_main_with_other_macros():
+    """Test @main can reference other macros."""
+    ast = parse_query("""
+        @work := tags='work';
+        @main := @work AND status='active';
+    """)
+    resolved = _resolve_macros(ast)
+    assert isinstance(resolved, And)
+
+
+def test_unnamed_statement_not_at_end_error():
+    """Test that unnamed statements not at the end cause an error."""
+    ast = parse_query("tags='work'; @other := status='active';")
+    with pytest.raises(RemyError, match="Only the last statement can be unnamed"):
+        _resolve_macros(ast)
+
+
+def test_both_explicit_main_and_unnamed_final_error():
+    """Test that having both explicit @main and unnamed final statement is an error."""
+    ast = parse_query("@main := tags='work'; status='active'")
+    with pytest.raises(RemyError, match="Cannot have both an explicit @main definition"):
         _resolve_macros(ast)
 
 

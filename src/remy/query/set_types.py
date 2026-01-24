@@ -77,6 +77,14 @@ class ValueSet:
         result._set = self._set & other._set
         return result
     
+    def difference(self, other: 'ValueSet') -> 'ValueSet':
+        """Return the difference of this ValueSet with another."""
+        if not isinstance(other, ValueSet):
+            raise TypeError(f"Cannot subtract {type(other).__name__} from ValueSet")
+        result = ValueSet()
+        result._set = self._set - other._set
+        return result
+    
     def to_sorted_set(self) -> SortedSet:
         """Convert to a plain SortedSet (with type prefixes)."""
         return self._set.copy()

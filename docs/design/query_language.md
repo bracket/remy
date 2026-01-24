@@ -46,14 +46,16 @@ We will implement the following five operators as first-class query operators:
 - Semantics: keep pairs in `A` whose **value** appears in `B` (match on second component)
 
 3) `difference_by_label(A, B)`
-- Inputs: PairSet `A`, PairSet `B`
+- Inputs: PairSet `A`, PairSet or LabelSet `B`
 - Output: PairSet
 - Semantics: remove pairs from `A` whose **label** appears in `B`
+- Note: If `B` is a PairSet, labels are extracted before comparison; if `B` is a LabelSet, it is used directly
 
 4) `difference_by_value(A, B)`
-- Inputs: PairSet `A`, PairSet `B`
+- Inputs: PairSet `A`, PairSet or ValueSet `B`
 - Output: PairSet
 - Semantics: remove pairs from `A` whose **value** appears in `B`
+- Note: If `B` is a PairSet, values are extracted before comparison; if `B` is a ValueSet, it is used directly
 
 5) `join_by_value_to_label(A, B)`
 - Inputs: PairSet `A`, PairSet `B`
@@ -78,6 +80,21 @@ We will implement the following five operators as first-class query operators:
 - Output: PairSet | LabelSet | ValueSet
 - Semantics: set intersection of all pairs, labels, or values in `A` and `B`
 - Note: If `A` and `B` have different value types that's fine, but it will just be the empty set.
+
+3) `difference(A, B)`
+- Inputs: PairSet `A`, PairSet `B` | LabelSet `A`, LabelSet `B` | ValueSet `A`, ValueSet `B`
+- Output: PairSet | LabelSet | ValueSet
+- Semantics: standard set difference (elements in `A` but not in `B`)
+- Note: Both arguments must be the same type (PairSet, LabelSet, or ValueSet)
+
+### Pair Transformation Operators
+
+1) `flip(PairSet)` → PairSet
+- Inputs: PairSet where all values are strings (labels)
+- Output: PairSet with labels and values swapped
+- Semantics: For each pair `(value, label)` in the input, produces `(label, value)` in the output
+- Note: Raises an error if any value is not a string, as only string labels can become valid labels after flipping
+- Use case: Invert relationships like `previous`/`next` mappings where values reference other card labels
 
 ### Projection Operators
 These operators are easiest to use with a few simple standard functions:

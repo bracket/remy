@@ -515,3 +515,198 @@ def test_complex_nested_query():
     )
     result = evaluate_query(ast, field_indices)
     assert result == {'card1'}
+
+
+def test_flip_basic():
+    """Test flip operator with string values."""
+    # Create a previous index where values are labels (strings)
+    previous_index = MockNotecardIndex('PREVIOUS', {
+        'card1': {'card2', 'card3'},  # card2 and card3 point to card1
+        'card2': {'card4'}  # card4 points to card2
+    })
+    
+    field_indices = {'PREVIOUS': previous_index}
+    
+    # flip(previous='card1') should swap label and value
+    # Input: {(card1, card2), (card1, card3)}
+    # Output: {(card2, card1), (card3, card1)}
+    # Labels: {card1}
+    ast = parse_query("flip(previous='card1')")
+    result = evaluate_query(ast, field_indices)
+    # After flip, the labels should be 'card1' (which was the value before)
+    # Actually we get {card1} appearing twice as a label in the flipped pairs
+    assert result == {'card1'}
+    
+    # Test with actual bare identifier
+    # flip on the full previous index
+    # previous has: {(card1, card2), (card1, card3), (card2, card4)}
+    # flip gives: {(card2, card1), (card3, card1), (card4, card2)}
+    # labels: {card1, card2}
+    ast2 = parse_query("flip(previous)")
+    result2 = evaluate_query(ast2, field_indices)
+    assert result2 == {'card1', 'card2'}
+
+
+def test_flip_non_string_value_error():
+    """Test that flip raises an error when values are not strings."""
+    # Create an index with non-string values
+    numeric_index = MockNotecardIndex('NUMBERS', {
+        42: {'card1', 'card2'},
+        99: {'card3'}
+    })
+    
+    field_indices = {'NUMBERS': numeric_index}
+    
+    # flip(numbers=42) should error because 42 is not a string
+    ast = parse_query("flip(numbers=42)")
+    with pytest.raises(RemyError, match="value is not a string"):
+        evaluate_query(ast, field_indices)
+
+
+def test_flip_non_pairset_error():
+    """Test that flip raises an error when called on non-PairSet."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # flip(labels(tags='foo')) should error because labels() returns a LabelSet
+    ast = parse_query("flip(labels(tags='foo'))")
+    with pytest.raises(RemyError, match="must be a PairSet"):
+        evaluate_query(ast, field_indices)
+
+
+def test_difference_pairset():
+    """Test difference operator on PairSets."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1', 'card2', 'card3'},
+        'bar': {'card2', 'card4'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # difference(tags='foo', tags='bar')
+    # tags='foo': {(foo, card1), (foo, card2), (foo, card3)}
+    # tags='bar': {(bar, card2), (bar, card4)}
+    # These don't have matching pairs (different values), so all of tags='foo' remains
+    # Result: {card1, card2, card3}
+    ast = parse_query("difference(tags='foo', tags='bar')")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card2', 'card3'}
+    
+    # But if we have overlapping pairs:
+    tags_index2 = MockNotecardIndex('TAGS', {
+        'foo': {'card1', 'card2'}
+    })
+    status_index = MockNotecardIndex('STATUS', {
+        'foo': {'card2'}  # Same value 'foo', overlapping label card2
+    })
+    
+    field_indices2 = {'TAGS': tags_index2, 'STATUS': status_index}
+    
+    # difference(tags='foo', status='foo')
+    # tags='foo': {(foo, card1), (foo, card2)}
+    # status='foo': {(foo, card2)}
+    # Difference: {(foo, card1)}
+    # Result: {card1}
+    ast2 = parse_query("difference(tags='foo', status='foo')")
+    result2 = evaluate_query(ast2, field_indices2)
+    assert result2 == {'card1'}
+
+
+def test_difference_labelset():
+    """Test difference operator on LabelSets."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1', 'card2', 'card3'},
+        'bar': {'card2', 'card4'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # difference(labels(tags='foo'), labels(tags='bar'))
+    # labels(tags='foo'): {card1, card2, card3}
+    # labels(tags='bar'): {card2, card4}
+    # Difference: {card1, card3}
+    ast = parse_query("difference(labels(tags='foo'), labels(tags='bar'))")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card3'}
+
+
+def test_difference_valueset():
+    """Test difference operator on ValueSets."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1', 'card2'},
+        'bar': {'card2', 'card3'},
+        'baz': {'card4'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # difference(values(union(tags='foo', tags='bar')), values(tags='baz'))
+    # values(union(...)): {foo, bar}
+    # values(tags='baz'): {baz}
+    # Difference: {foo, bar}
+    # But this returns a ValueSet which can't be used in evaluate_query
+    ast = parse_query("difference(values(union(tags='foo', tags='bar')), values(tags='baz'))")
+    with pytest.raises(RemyError, match="evaluates to a ValueSet"):
+        evaluate_query(ast, field_indices)
+
+
+def test_difference_type_mismatch_error():
+    """Test that difference requires matching types."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # difference(tags='foo', labels(tags='foo'))
+    # First is PairSet, second is LabelSet - should error
+    ast = parse_query("difference(tags='foo', labels(tags='foo'))")
+    with pytest.raises(RemyError, match="both arguments must be the same type"):
+        evaluate_query(ast, field_indices)
+
+
+def test_difference_by_label_with_labelset():
+    """Test difference_by_label with LabelSet as second argument."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1', 'card2', 'card3'}
+    })
+    status_index = MockNotecardIndex('STATUS', {
+        'active': {'card2', 'card4'}
+    })
+    
+    field_indices = {'TAGS': tags_index, 'STATUS': status_index}
+    
+    # difference_by_label(tags='foo', labels(status='active'))
+    # tags='foo': {(foo, card1), (foo, card2), (foo, card3)}
+    # labels(status='active'): {card2, card4}
+    # Remove pairs where label in {card2, card4}
+    # Result: {(foo, card1), (foo, card3)} -> {card1, card3}
+    ast = parse_query("difference_by_label(tags='foo', labels(status='active'))")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card3'}
+
+
+def test_difference_by_value_with_valueset():
+    """Test difference_by_value with ValueSet as second argument."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1', 'card2'},
+        'bar': {'card2', 'card3'}
+    })
+    excluded_index = MockNotecardIndex('EXCLUDED', {
+        'bar': {'card5'},
+        'baz': {'card6'}
+    })
+    
+    field_indices = {'TAGS': tags_index, 'EXCLUDED': excluded_index}
+    
+    # difference_by_value(union(tags='foo', tags='bar'), values(excluded='bar'))
+    # union(tags='foo', tags='bar'): {(foo, card1), (foo, card2), (bar, card2), (bar, card3)}
+    # values(excluded='bar'): {bar}
+    # Remove pairs where value is 'bar'
+    # Result: {(foo, card1), (foo, card2)} -> {card1, card2}
+    ast = parse_query("difference_by_value(union(tags='foo', tags='bar'), values(excluded='bar'))")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card2'}

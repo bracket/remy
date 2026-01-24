@@ -206,5 +206,26 @@ def test_existing_queries_still_work():
     assert result == {'card1', 'card2'}
 
 
+def test_at_id_comparison():
+    """Test @id pseudo-index in comparison operations."""
+    cache = MockNotecardCache(['remy', 'test', 'other'])
+    
+    # Create a mock index just to provide access to the cache
+    dummy_index = MockNotecardIndex('DUMMY', {}, notecard_cache=cache)
+    
+    field_indices = {'DUMMY': dummy_index}
+    
+    # Query: @id='remy' should return the card with label 'remy'
+    # @id synthesizes (label, label) pairs, so @id='remy' filters to (remy, remy)
+    ast = parse_query("@id='remy'")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'remy'}
+    
+    # Query: @id='test' should return the card with label 'test'
+    ast = parse_query("@id='test'")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'test'}
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

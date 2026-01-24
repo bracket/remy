@@ -392,6 +392,82 @@ def _evaluate_binary_op(ast: BinaryOp):
         raise RemyError(f"Unsupported binary operator: {ast.operator}")
 
 
+def _evaluate_pseudo_index_comparison(field_name: str, operator: str, value, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """
+    Evaluate a comparison operation on a pseudo-index.
+    
+    Pseudo-indices are special synthetic indices that start with @ and are not
+    backed by real field data. Currently supports @id which synthesizes
+    (label, label) pairs for all notecards.
+    
+    Args:
+        field_name: The pseudo-index name (uppercase, with @ prefix)
+        operator: The comparison operator (=, <, <=, >, >=)
+        value: The value to compare against
+        field_indices: Dictionary of field indices (used to access notecard cache)
+    
+    Returns:
+        PairSet containing matching pairs
+    """
+    if field_name == '@ID':
+        # @id pseudo-index: synthesizes (label, label) pairs for all notecards
+        if operator == '=':
+            # Equality: return the pair if the value matches a primary label
+            result = create_pairset()
+            if field_indices:
+                # Get the first index to access the notecard cache
+                any_index = next(iter(field_indices.values()))
+                if value in any_index.notecard_cache.primary_labels:
+                    # Add (label, label) pair with type prefix
+                    typed_value = (id(type(value)), value)
+                    result.add((typed_value, value))
+            return result
+        else:
+            # Other operators on @id: not yet supported, return empty set
+            # Could be extended to support ordering if needed
+            return create_pairset()
+    else:
+        # Unknown pseudo-index
+        raise RemyError(
+            f"Unknown pseudo-index: {field_name}. "
+            f"Known pseudo-indices: @id"
+        )
+
+
+def _evaluate_pseudo_index_all(field_name: str, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """
+    Evaluate a pseudo-index to return all its pairs.
+    
+    Pseudo-indices are special synthetic indices that start with @ and are not
+    backed by real field data. Currently supports @id which synthesizes
+    (label, label) pairs for all notecards.
+    
+    Args:
+        field_name: The pseudo-index name (uppercase, with @ prefix)
+        field_indices: Dictionary of field indices (used to access notecard cache)
+    
+    Returns:
+        PairSet containing all pairs from the pseudo-index
+    """
+    if field_name == '@ID':
+        # @id pseudo-index: synthesizes (label, label) pairs for all notecards
+        result = create_pairset()
+        if field_indices:
+            # Get the first index to access the notecard cache
+            any_index = next(iter(field_indices.values()))
+            for label in any_index.notecard_cache.primary_labels:
+                # Add (label, label) pair with type prefix
+                typed_value = (id(type(label)), label)
+                result.add((typed_value, label))
+        return result
+    else:
+        # Unknown pseudo-index
+        raise RemyError(
+            f"Unknown pseudo-index: {field_name}. "
+            f"Known pseudo-indices: @id"
+        )
+
+
 def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
     """
     Evaluate a comparison operation and return a PairSet.
@@ -447,25 +523,10 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             "Timedelta values can only be used in arithmetic with dates/timestamps."
         )
 
-    # Handle @id pseudo-index specially
-    if field_name == '@ID':
-        # @id synthesizes (label, label) pairs for all notecards
-        # For equality comparison, just filter to the matching label
-        if ast.operator == '=':
-            # Only return the pair if the value matches a primary label
-            result = create_pairset()
-            if field_indices:
-                # Get the first index to access the notecard cache
-                any_index = next(iter(field_indices.values()))
-                if value in any_index.notecard_cache.primary_labels:
-                    # Add (label, label) pair with type prefix
-                    typed_value = (id(type(value)), value)
-                    result.add((typed_value, value))
-            return result
-        else:
-            # For other operators on @id, return empty set (not supported)
-            # Could be extended to support ordering in the future
-            return create_pairset()
+    # Check if this is a pseudo-index (starts with @ and not in field_indices)
+    if field_name.startswith('@') and field_name not in field_indices:
+        # Handle pseudo-indices
+        return _evaluate_pseudo_index_comparison(field_name, ast.operator, value, field_indices)
 
     # If the field doesn't exist in indices, return empty PairSet
     # (fields are dynamic and optional)
@@ -517,8 +578,8 @@ def _evaluate_identifier(ast: Identifier, field_indices: Dict[str, 'NotecardInde
     This allows queries like: join_by_value_to_label(previous, tags="remy")
     where 'previous' references the entire PREVIOUS index.
     
-    Special handling for @id pseudo-index which contains (label, label) pairs
-    for all notecard primary labels.
+    Special handling for pseudo-indices (identifiers starting with @) which
+    synthesize data dynamically.
     
     Args:
         ast: Identifier AST node
@@ -528,23 +589,13 @@ def _evaluate_identifier(ast: Identifier, field_indices: Dict[str, 'NotecardInde
         PairSet containing all pairs from the referenced index
     
     Raises:
-        RemyError: If the identifier doesn't reference a known index
+        RemyError: If the identifier doesn't reference a known index or pseudo-index
     """
     field_name = ast.name.upper()
     
-    # Handle @id pseudo-index
-    if field_name == '@ID':
-        # Create a PairSet with (primary_label, primary_label) for all cards
-        result = create_pairset()
-        # Get all primary labels from any index (they all have access to the cache)
-        if field_indices:
-            # Get the first index to access the notecard cache
-            any_index = next(iter(field_indices.values()))
-            for label in any_index.notecard_cache.primary_labels:
-                # Add (label, label) pair with type prefix
-                typed_value = (id(type(label)), label)
-                result.add((typed_value, label))
-        return result
+    # Check if this is a pseudo-index (starts with @ and not in field_indices)
+    if field_name.startswith('@') and field_name not in field_indices:
+        return _evaluate_pseudo_index_all(field_name, field_indices)
     
     # Regular field index
     if field_name not in field_indices:

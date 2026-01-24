@@ -68,9 +68,19 @@ Before setting up the Remy web interface, ensure you have:
 
 ### System Requirements
 
-- **Memory**: 4 GB minimum, 8 GB recommended for building
+- **Memory**: 8 GB minimum for snapshot creation (Node.js compilation is memory-intensive)
+  - Docker Desktop should be configured with at least 8 GB memory allocation
+  - The snapshot-builder service is pre-configured with 8 GB memory limits
 - **CPU**: Multi-core processor recommended (build uses parallel compilation)
 - **OS**: Linux, macOS, or Windows with WSL2
+
+#### Configuring Docker Desktop Memory (macOS/Windows)
+
+If you encounter out-of-memory errors during snapshot creation:
+
+1. **macOS**: Docker Desktop → Preferences → Resources → Memory → Set to 8 GB or higher
+2. **Windows**: Docker Desktop → Settings → Resources → Memory → Set to 8 GB or higher
+3. Restart Docker Desktop after changing memory settings
 
 ---
 
@@ -90,7 +100,7 @@ The Remy web interface consists of three main components:
 
 3. **Docker Environment** (`vite/Dockerfile`)
    - Alpine Linux-based container
-   - Builds Python 3.13.1 and Node.js 22.13.0 from source using asdf
+   - Builds Python 3.14.2 and Node.js 24.13.0 from source using asdf
    - Provides a consistent development and build environment
 
 ### Communication Flow
@@ -109,7 +119,7 @@ In development, Vite proxies API requests from `/api/*` to the Flask backend run
 
 ### Understanding the Build Time
 
-The Docker container builds Python 3.13.1 and Node.js 22.13.0 from source using [asdf](https://asdf-vm.com/) version manager. This approach provides:
+The Docker container builds Python 3.14.2 and Node.js 24.13.0 from source using [asdf](https://asdf-vm.com/) version manager. This approach provides:
 
 - **Full control** over the build process and optimization flags
 - **Consistency** across different environments
@@ -122,8 +132,8 @@ However, compiling Node.js from source takes approximately **85 minutes** on a t
 To avoid rebuilding the environment every time, Remy uses a **snapshot mechanism** that caches the compiled Python and Node.js interpreters.
 
 The snapshot is a compressed tarball (`root_asdf.tbz2`) that contains:
-- Compiled Python 3.13.1 interpreter and packages
-- Compiled Node.js 22.13.0 interpreter and npm
+- Compiled Python 3.14.2 interpreter and packages
+- Compiled Node.js 24.13.0 interpreter and npm
 - asdf configuration and tool versions
 
 **How it works:**
@@ -146,6 +156,8 @@ The `snapshot-builder` Docker Compose service automates the snapshot creation pr
 - Builds the image in `compile` mode
 - Mounts the `vite/` directory so the container can write the snapshot file
 - Creates `root_asdf.tbz2` containing `/root/.asdf` and `/root/.tool-versions`
+- Pre-configured with 8 GB memory limits and optimized build settings
+- Uses limited parallelism (`-j2`) to reduce memory usage during Node.js compilation
 - Exits automatically when complete
 
 You no longer need to manually edit the Dockerfile or run external scripts.
@@ -164,7 +176,7 @@ The snapshot mechanism is now automated via Docker Compose. You no longer need t
    ```
 
    This will:
-   - Build Python 3.13.1 and Node.js 22.13.0 from source (takes approximately 85 minutes)
+   - Build Python 3.14.2 and Node.js 24.13.0 from source (takes approximately 85 minutes)
    - Create the `root_asdf.tbz2` snapshot file in the `vite/` directory
    - Exit automatically when complete
 
@@ -392,6 +404,33 @@ Open http://localhost:5000 in your browser (note: port 5000, not 3000).
 ---
 
 ## Troubleshooting
+
+### Out of Memory Errors During Snapshot Build
+
+**Problem**: `c++: fatal error: Killed signal terminated program cc1plus` or `cannot allocate memory` during `docker-compose run --rm snapshot-builder`
+
+**Cause**: Node.js compilation requires significant memory (especially for the V8 engine). Docker may not have enough memory allocated.
+
+**Solutions:**
+
+1. **Increase Docker Desktop memory allocation** (macOS/Windows):
+   - macOS: Docker Desktop → Preferences → Resources → Memory → Set to 8 GB minimum
+   - Windows: Docker Desktop → Settings → Resources → Memory → Set to 8 GB minimum
+   - Restart Docker Desktop after changing settings
+
+2. **For Linux with limited RAM**, the snapshot-builder is already configured with:
+   - 8 GB memory limit (`mem_limit: 8g`)
+   - 2 GB shared memory (`shm_size: '2gb'`)
+   - Reduced parallelism (`MAKE_OPTS=-j2`) to limit concurrent compilation
+   
+   If you still encounter issues, ensure your system has adequate swap space configured.
+
+3. **Verify current Docker memory limit**:
+   ```bash
+   docker info | grep Memory
+   ```
+
+4. **Alternative: Use pre-built snapshot**: If memory constraints prevent building locally, obtain the `root_asdf.tbz2` file from a teammate or CI system that has sufficient resources.
 
 ### Port Conflicts
 

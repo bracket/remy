@@ -8,7 +8,7 @@ used to filter notecards based on metadata.
 from lark import Lark
 
 # Lark grammar for WHERE clause queries with macro support
-# Uses LALR parser for performance
+# Uses Earley parser for better handling of ambiguous grammar
 QUERY_GRAMMAR = r"""
     ?start: statement_list
 

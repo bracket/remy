@@ -94,10 +94,13 @@ def _resolve_macros(ast: ASTNode) -> ASTNode:
             macro_def = macro_defs[node.name]
             
             # Validate argument count
-            if len(node.arguments) != len(macro_def.parameters):
+            expected_count = len(macro_def.parameters)
+            actual_count = len(node.arguments)
+            if actual_count != expected_count:
+                arg_word = "argument" if expected_count == 1 else "arguments"
                 raise RemyError(
-                    f"Macro @{node.name} expects {len(macro_def.parameters)} arguments, "
-                    f"got {len(node.arguments)}"
+                    f"Macro @{node.name} expects {expected_count} {arg_word}, "
+                    f"got {actual_count}"
                 )
             
             # Build parameter substitution map

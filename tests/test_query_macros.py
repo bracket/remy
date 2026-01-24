@@ -194,7 +194,7 @@ def test_wrong_argument_count():
     
     # Too many arguments
     ast = parse_query("@filter(Field) := Field='value'; @filter(tags, 'extra')")
-    with pytest.raises(RemyError, match="expects 1 arguments"):
+    with pytest.raises(RemyError, match="expects 1 argument"):
         _resolve_macros(ast)
 
 

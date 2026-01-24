@@ -389,6 +389,10 @@ def _evaluate_function_call(ast: FunctionCall, field_indices: Dict[str, 'Notecar
         return _call_union(ast, field_indices)
     elif func_name == 'intersect':
         return _call_intersect(ast, field_indices)
+    elif func_name == 'difference':
+        return _call_difference(ast, field_indices)
+    elif func_name == 'flip':
+        return _call_flip(ast, field_indices)
     elif func_name == 'labels':
         return _call_labels(ast, field_indices)
     elif func_name == 'values':
@@ -492,6 +496,27 @@ def _call_values(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -
     a = _evaluate(ast.arguments[0], field_indices)
     
     return _values(a)
+
+
+def _call_difference(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> EvalResult:
+    """Evaluate difference(A, B) function."""
+    if len(ast.arguments) != 2:
+        raise RemyError(f"difference expects 2 arguments, got {len(ast.arguments)}")
+    
+    a = _evaluate(ast.arguments[0], field_indices)
+    b = _evaluate(ast.arguments[1], field_indices)
+    
+    return _difference(a, b)
+
+
+def _call_flip(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """Evaluate flip(PairSet) function."""
+    if len(ast.arguments) != 1:
+        raise RemyError(f"flip expects 1 argument, got {len(ast.arguments)}")
+    
+    a = _evaluate(ast.arguments[0], field_indices)
+    
+    return _flip(a)
 
 
 # ============================================================================
@@ -794,3 +819,78 @@ def _values(a: EvalResult) -> ValueSet:
         raise RemyError("values() cannot be called on a LabelSet")
     else:
         raise RemyError(f"values: unexpected type {type(a).__name__}")
+
+
+def _difference(a: EvalResult, b: EvalResult) -> EvalResult:
+    """
+    Set difference of A and B (pair-unaware).
+    
+    Works on PairSets, LabelSets, or ValueSets (both must be same type).
+    
+    Args:
+        a: PairSet, LabelSet, or ValueSet
+        b: PairSet, LabelSet, or ValueSet (same type as a)
+        
+    Returns:
+        PairSet, LabelSet, or ValueSet
+    """
+    # Check that both are the same type
+    if type(a) != type(b):
+        raise RemyError(
+            f"difference: both arguments must be the same type, got {type(a).__name__} and {type(b).__name__}"
+        )
+    
+    if isinstance(a, set):
+        # Both are LabelSets
+        return a - b
+    elif isinstance(a, SortedSet):
+        # Both are PairSets
+        return a - b
+    elif isinstance(a, ValueSet):
+        # Both are ValueSets
+        return a.difference(b)
+    else:
+        raise RemyError(f"difference: unexpected type {type(a).__name__}")
+
+
+def _flip(a: EvalResult) -> PairSet:
+    """
+    Flip a PairSet, swapping labels and values.
+    
+    Each pair (value, label) in the input becomes (label, value) in the output,
+    where the original label becomes the new value and the original value becomes the new label.
+    Values must be strings (labels) for this operation to succeed.
+    
+    Args:
+        a: PairSet
+        
+    Returns:
+        PairSet with flipped pairs
+        
+    Raises:
+        RemyError: If argument is not a PairSet or if any value is not a string
+    """
+    # A must be a PairSet
+    if not isinstance(a, SortedSet):
+        raise RemyError(f"flip: argument must be a PairSet, got {type(a).__name__}")
+    
+    # Create result PairSet with flipped pairs
+    result = create_pairset()
+    for typed_value, label in a:
+        # Extract the actual value
+        _, value = typed_value
+        
+        # Validate that value is a string (label)
+        if not isinstance(value, str):
+            raise RemyError(
+                f"flip: cannot flip pair ({value}, {label}) because value is not a string. "
+                f"All values must be strings (labels) to use flip(). Got type: {type(value).__name__}"
+            )
+        
+        # Create flipped pair: original (value, label) becomes (label, value)
+        # The original label becomes the new value (first position)
+        # The original value becomes the new label (second position)
+        typed_new_value = (id(type(label)), label)
+        result.add((typed_new_value, value))
+    
+    return result

@@ -520,25 +520,23 @@ def test_complex_nested_query():
 def test_flip_basic():
     """Test flip operator with string values."""
     # Create a previous index where values are labels (strings)
+    # Structure: value='cardX' -> labels={cards that have cardX as their previous}
     previous_index = MockNotecardIndex('PREVIOUS', {
-        'card1': {'card2', 'card3'},  # card2 and card3 point to card1
-        'card2': {'card4'}  # card4 points to card2
+        'card1': {'card2', 'card3'},  # card2 and card3 have card1 as previous
+        'card2': {'card4'}  # card4 has card2 as previous
     })
     
     field_indices = {'PREVIOUS': previous_index}
     
     # flip(previous='card1') should swap label and value
-    # Input: {(card1, card2), (card1, card3)}
-    # Output: {(card2, card1), (card3, card1)}
-    # Labels: {card1}
+    # Input pairs: {(card1, card2), (card1, card3)} where (value, label)
+    # After flip: {(card2, card1), (card3, card1)} where new (value, label)
+    # Labels: {card1} (card1 becomes the label in flipped pairs)
     ast = parse_query("flip(previous='card1')")
     result = evaluate_query(ast, field_indices)
-    # After flip, the labels should be 'card1' (which was the value before)
-    # Actually we get {card1} appearing twice as a label in the flipped pairs
     assert result == {'card1'}
     
-    # Test with actual bare identifier
-    # flip on the full previous index
+    # Test with full previous index
     # previous has: {(card1, card2), (card1, card3), (card2, card4)}
     # flip gives: {(card2, card1), (card3, card1), (card4, card2)}
     # labels: {card1, card2}
@@ -589,7 +587,7 @@ def test_difference_pairset():
     # difference(tags='foo', tags='bar')
     # tags='foo': {(foo, card1), (foo, card2), (foo, card3)}
     # tags='bar': {(bar, card2), (bar, card4)}
-    # These don't have matching pairs (different values), so all of tags='foo' remains
+    # These don't have matching pairs (different labels 'foo' vs 'bar'), so all of tags='foo' remains
     # Result: {card1, card2, card3}
     ast = parse_query("difference(tags='foo', tags='bar')")
     result = evaluate_query(ast, field_indices)
@@ -600,7 +598,7 @@ def test_difference_pairset():
         'foo': {'card1', 'card2'}
     })
     status_index = MockNotecardIndex('STATUS', {
-        'foo': {'card2'}  # Same value 'foo', overlapping label card2
+        'foo': {'card2'}  # Same label 'foo', overlapping value card2
     })
     
     field_indices2 = {'TAGS': tags_index2, 'STATUS': status_index}

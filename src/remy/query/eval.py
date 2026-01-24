@@ -857,7 +857,8 @@ def _flip(a: EvalResult) -> PairSet:
     """
     Flip a PairSet, swapping labels and values.
     
-    Each pair (value, label) becomes (label, value).
+    Each pair (value, label) in the input becomes (label, value) in the output,
+    where the original label becomes the new value and the original value becomes the new label.
     Values must be strings (labels) for this operation to succeed.
     
     Args:
@@ -886,8 +887,9 @@ def _flip(a: EvalResult) -> PairSet:
                 f"All values must be strings (labels) to use flip(). Got type: {type(value).__name__}"
             )
         
-        # Create flipped pair: (label, value) becomes (value, label)
-        # The new value is the original label, the new label is the original value
+        # Create flipped pair: original (value, label) becomes (label, value)
+        # The original label becomes the new value (first position)
+        # The original value becomes the new label (second position)
         typed_new_value = (id(type(label)), label)
         result.add((typed_new_value, value))
     

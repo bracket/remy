@@ -23,6 +23,11 @@ services:
       target: remy-vite
       args:
         BUILD_MODE: compile
+      # Increase shared memory size for Node.js compilation
+      shm_size: '2gb'
+    # Set high memory limits for the build process
+    mem_limit: 8g
+    memswap_limit: 8g
     volumes:
       - type: bind
         source: .

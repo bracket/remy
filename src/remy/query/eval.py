@@ -413,8 +413,13 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             f"Currently supported: =, <, <=, >, >="
         )
 
-    # Left side must be an Identifier (field name)
-    if not isinstance(ast.left, Identifier):
+    # Left side must be an Identifier (field name) or MacroReference (for backward compatibility with @id, @label)
+    if isinstance(ast.left, Identifier):
+        field_name = ast.left.name.upper()
+    elif isinstance(ast.left, MacroReference):
+        # Treat MacroReference as an identifier (for backward compatibility with @id, @label pseudo-indices)
+        field_name = ('@' + ast.left.name).upper()
+    else:
         raise RemyError(
             f"Left operand of comparison must be an Identifier (field name), "
             f"got {type(ast.left).__name__}"
@@ -435,14 +440,32 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             f"got {type(ast.right).__name__}"
         )
 
-    field_name = ast.left.name.upper()
-
     # Check if the value is a Timedelta - we don't support timedelta comparisons
     if isinstance(value, Timedelta):
         raise InvalidComparison(
             "Comparing timedeltas is not supported. "
             "Timedelta values can only be used in arithmetic with dates/timestamps."
         )
+
+    # Handle @id pseudo-index specially
+    if field_name == '@ID':
+        # @id synthesizes (label, label) pairs for all notecards
+        # For equality comparison, just filter to the matching label
+        if ast.operator == '=':
+            # Only return the pair if the value matches a primary label
+            result = create_pairset()
+            if field_indices:
+                # Get the first index to access the notecard cache
+                any_index = next(iter(field_indices.values()))
+                if value in any_index.notecard_cache.primary_labels:
+                    # Add (label, label) pair with type prefix
+                    typed_value = (id(type(value)), value)
+                    result.add((typed_value, value))
+            return result
+        else:
+            # For other operators on @id, return empty set (not supported)
+            # Could be extended to support ordering in the future
+            return create_pairset()
 
     # If the field doesn't exist in indices, return empty PairSet
     # (fields are dynamic and optional)

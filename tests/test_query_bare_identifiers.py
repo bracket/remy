@@ -245,5 +245,46 @@ def test_at_id_comparison():
     assert result == {'test'}
 
 
+def test_at_label_pseudo_index():
+    """Test @label pseudo-index that maps all labels to primary labels."""
+    from remy.notecard_index import PseudoIndex
+    
+    cache = MockNotecardCache(['card1', 'card2'])
+    # Add some additional label mappings to simulate aliases
+    cache.primary_labels = ['card1', 'card2']
+    
+    # Mock cards_by_label to include aliases
+    class MockCard:
+        def __init__(self, primary_label):
+            self.primary_label = primary_label
+    
+    cache.cards_by_label = {
+        'card1': MockCard('card1'),
+        'alias1': MockCard('card1'),  # alias1 -> card1
+        'card2': MockCard('card2'),
+        'alias2': MockCard('card2'),  # alias2 -> card2
+    }
+    
+    # Create a mock index
+    dummy_index = MockNotecardIndex('DUMMY', {}, notecard_cache=cache)
+    
+    # Include the @label pseudo-index in field_indices
+    field_indices = {
+        'DUMMY': dummy_index,
+        '@LABEL': PseudoIndex(cache, '@LABEL')
+    }
+    
+    # Query: labels(@label) should return all primary labels (from all label mappings)
+    ast = parse_query("labels(@label)")
+    result = evaluate_query(ast, field_indices)
+    # Should return primary labels for all the label entries
+    assert result == {'card1', 'card2'}
+    
+    # Query: @label='alias1' should return card1 (the primary label for alias1)
+    ast = parse_query("@label='alias1'")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1'}
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

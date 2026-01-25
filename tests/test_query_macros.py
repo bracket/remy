@@ -165,18 +165,23 @@ def test_circular_dependency_detection():
 
 
 def test_undefined_macro_error():
-    """Test that using undefined macros raises an error."""
-    # A bare macro reference is treated as an identifier for backward compatibility
-    # So this won't raise an error during resolution - it's treated as @undefined identifier
+    """Test that undefined macros are left as MacroReference nodes for field resolution."""
+    # A bare macro reference is treated as a potential pseudo-index
+    # It won't raise an error during macro resolution - it's left as MacroReference
     ast = parse_query("@undefined")
     resolved = _resolve_macros(ast)
-    # It should resolve to a MacroReference that will be treated as identifier during evaluation
+    # It should remain as a MacroReference that will be treated as identifier during evaluation
     assert isinstance(resolved, MacroReference)
+    assert resolved.name == 'undefined'
     
-    # Undefined macro in a statement list WILL raise an error
+    # Undefined macro in a more complex expression is also left as-is
     ast = parse_query("@work := tags='work'; @work AND @undefined")
-    with pytest.raises(RemyError, match="Undefined macro"):
-        _resolve_macros(ast)
+    resolved = _resolve_macros(ast)
+    # @work should be expanded, but @undefined should remain as MacroReference
+    assert isinstance(resolved, And)
+    # The right side should be a MacroReference
+    assert isinstance(resolved.right, MacroReference)
+    assert resolved.right.name == 'undefined'
 
 
 def test_duplicate_macro_definition():

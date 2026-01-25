@@ -157,7 +157,7 @@ The `snapshot-builder` Docker Compose service automates the snapshot creation pr
 - Mounts the `vite/` directory so the container can write the snapshot file
 - Creates `root_asdf.tbz2` containing `/root/.asdf` and `/root/.tool-versions`
 - Pre-configured with 16 GB memory limits and optimized build settings
-- Uses limited parallelism (`-j2`) to reduce memory usage during Node.js compilation
+- Uses single-threaded compilation (`-j1`) to minimize memory usage during Node.js V8 compilation
 - Verbose logging enabled for Node.js compilation to monitor build progress
 - Exits automatically when complete
 
@@ -422,7 +422,7 @@ Open http://localhost:5000 in your browser (note: port 5000, not 3000).
 2. **For Linux with limited RAM**, the snapshot-builder is already configured with:
    - 16 GB memory limit (`mem_limit: 16g`)
    - 4 GB shared memory (`shm_size: '4gb'`)
-   - Reduced parallelism (`MAKE_OPTS=-j2`) to limit concurrent compilation
+   - Single-threaded compilation (`MAKE_OPTS=-j1`) to minimize memory usage
    
    If you still encounter issues, ensure your system has adequate swap space configured.
 

@@ -238,15 +238,36 @@ def _substitute_params(node: ASTNode, param_map: Dict[str, ASTNode], depth: int 
         return node
 
 
+def resolve_macros(ast: ASTNode) -> ASTNode:
+    """
+    Resolve macro definitions and expand all macro references.
+    
+    This should be called before field extraction to ensure all macros are expanded.
+    Any unresolved MacroReference nodes after this are treated as pseudo-indices.
+    
+    Args:
+        ast: The parsed query AST node (may contain macro definitions)
+        
+    Returns:
+        The fully expanded AST with all macros resolved to @main
+        
+    Raises:
+        RemyError: If there are circular macro dependencies or undefined macros
+    """
+    return _resolve_macros(ast)
+
+
 def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:
     """
     Evaluate a query AST against field indices and return matching primary labels.
 
-    This is the main entry point for query evaluation. It resolves macros,
-    evaluates the query, and projects the result to a LabelSet for backward compatibility.
+    This is the main entry point for query evaluation. It evaluates the query
+    and projects the result to a LabelSet for backward compatibility.
+    
+    Note: Macro resolution should be done BEFORE calling this function.
 
     Args:
-        ast: The parsed query AST node to evaluate (may contain macro definitions)
+        ast: The parsed query AST node to evaluate (macros should already be resolved)
         field_indices: Dictionary mapping uppercase field names to NotecardIndex objects
 
     Returns:
@@ -255,11 +276,8 @@ def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> S
     Raises:
         RemyError: If the query uses unsupported operators or constructs
     """
-    # First, resolve any macros in the AST
-    resolved_ast = _resolve_macros(ast)
-    
-    # Then evaluate the resolved AST
-    result = _evaluate(resolved_ast, field_indices)
+    # Evaluate the AST
+    result = _evaluate(ast, field_indices)
     
     # Project to LabelSet for output
     if isinstance(result, set):
@@ -392,82 +410,6 @@ def _evaluate_binary_op(ast: BinaryOp):
         raise RemyError(f"Unsupported binary operator: {ast.operator}")
 
 
-def _evaluate_pseudo_index_comparison(field_name: str, operator: str, value, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
-    """
-    Evaluate a comparison operation on a pseudo-index.
-    
-    Pseudo-indices are special synthetic indices that start with @ and are not
-    backed by real field data. Currently supports @id which synthesizes
-    (label, label) pairs for all notecards.
-    
-    Args:
-        field_name: The pseudo-index name (uppercase, with @ prefix)
-        operator: The comparison operator (=, <, <=, >, >=)
-        value: The value to compare against
-        field_indices: Dictionary of field indices (used to access notecard cache)
-    
-    Returns:
-        PairSet containing matching pairs
-    """
-    if field_name == '@ID':
-        # @id pseudo-index: synthesizes (label, label) pairs for all notecards
-        if operator == '=':
-            # Equality: return the pair if the value matches a primary label
-            result = create_pairset()
-            if field_indices:
-                # Get the first index to access the notecard cache
-                any_index = next(iter(field_indices.values()))
-                if value in any_index.notecard_cache.primary_labels:
-                    # Add (label, label) pair with type prefix
-                    typed_value = (id(type(value)), value)
-                    result.add((typed_value, value))
-            return result
-        else:
-            # Other operators on @id: not yet supported, return empty set
-            # Could be extended to support ordering if needed
-            return create_pairset()
-    else:
-        # Unknown pseudo-index
-        raise RemyError(
-            f"Unknown pseudo-index: {field_name}. "
-            f"Known pseudo-indices: @id"
-        )
-
-
-def _evaluate_pseudo_index_all(field_name: str, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
-    """
-    Evaluate a pseudo-index to return all its pairs.
-    
-    Pseudo-indices are special synthetic indices that start with @ and are not
-    backed by real field data. Currently supports @id which synthesizes
-    (label, label) pairs for all notecards.
-    
-    Args:
-        field_name: The pseudo-index name (uppercase, with @ prefix)
-        field_indices: Dictionary of field indices (used to access notecard cache)
-    
-    Returns:
-        PairSet containing all pairs from the pseudo-index
-    """
-    if field_name == '@ID':
-        # @id pseudo-index: synthesizes (label, label) pairs for all notecards
-        result = create_pairset()
-        if field_indices:
-            # Get the first index to access the notecard cache
-            any_index = next(iter(field_indices.values()))
-            for label in any_index.notecard_cache.primary_labels:
-                # Add (label, label) pair with type prefix
-                typed_value = (id(type(label)), label)
-                result.add((typed_value, label))
-        return result
-    else:
-        # Unknown pseudo-index
-        raise RemyError(
-            f"Unknown pseudo-index: {field_name}. "
-            f"Known pseudo-indices: @id"
-        )
-
-
 def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
     """
     Evaluate a comparison operation and return a PairSet.
@@ -523,14 +465,11 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             "Timedelta values can only be used in arithmetic with dates/timestamps."
         )
 
-    # Check if this is a pseudo-index (starts with @ and not in field_indices)
-    if field_name.startswith('@') and field_name not in field_indices:
-        # Handle pseudo-indices
-        return _evaluate_pseudo_index_comparison(field_name, ast.operator, value, field_indices)
-
-    # If the field doesn't exist in indices, return empty PairSet
-    # (fields are dynamic and optional)
+    # Check if the field exists in indices
+    # Pseudo-indices (@id, @primary-label, etc.) are now handled by field_indices
+    # so they'll be in the dict if they were extracted
     if field_name not in field_indices:
+        # Field doesn't exist - return empty PairSet
         return create_pairset()
 
     index = field_indices[field_name]
@@ -578,12 +517,12 @@ def _evaluate_identifier(ast: Identifier, field_indices: Dict[str, 'NotecardInde
     This allows queries like: join_by_value_to_label(previous, tags="remy")
     where 'previous' references the entire PREVIOUS index.
     
-    Special handling for pseudo-indices (identifiers starting with @) which
-    synthesize data dynamically.
+    Pseudo-indices (@id, @primary-label, etc.) are now handled uniformly through
+    the field_indices mechanism.
     
     Args:
         ast: Identifier AST node
-        field_indices: Dictionary mapping uppercase field names to NotecardIndex objects
+        field_indices: Dictionary mapping uppercase field names to NotecardIndex or PseudoIndex objects
     
     Returns:
         PairSet containing all pairs from the referenced index
@@ -593,11 +532,7 @@ def _evaluate_identifier(ast: Identifier, field_indices: Dict[str, 'NotecardInde
     """
     field_name = ast.name.upper()
     
-    # Check if this is a pseudo-index (starts with @ and not in field_indices)
-    if field_name.startswith('@') and field_name not in field_indices:
-        return _evaluate_pseudo_index_all(field_name, field_indices)
-    
-    # Regular field index
+    # Check if field exists in indices (includes both real and pseudo-indices)
     if field_name not in field_indices:
         raise RemyError(
             f"Identifier '{ast.name}' does not reference a known field index. "

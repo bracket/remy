@@ -93,8 +93,9 @@ def _resolve_macros(ast: ASTNode) -> ASTNode:
         
         if isinstance(node, MacroReference):
             # Look up the macro definition
+            # If not found, leave it as-is - it might be a pseudo-index that will be resolved later
             if node.name not in macro_defs:
-                raise RemyError(f"Undefined macro: @{node.name}")
+                return node
             
             # Check for circular dependency
             if node.name in expansion_stack:
@@ -534,10 +535,18 @@ def _evaluate_identifier(ast: Identifier, field_indices: Dict[str, 'NotecardInde
     
     # Check if field exists in indices (includes both real and pseudo-indices)
     if field_name not in field_indices:
-        raise RemyError(
-            f"Identifier '{ast.name}' does not reference a known field index. "
-            f"Available indices: {', '.join(sorted(field_indices.keys()))}"
-        )
+        # Provide a helpful error message indicating it could be a macro or pseudo-index
+        if field_name.startswith('@'):
+            raise RemyError(
+                f"Identifier '@{ast.name.lstrip('@')}' does not reference a known field index, "
+                f"macro, or pseudo-index. "
+                f"Available indices: {', '.join(sorted(field_indices.keys()))}"
+            )
+        else:
+            raise RemyError(
+                f"Identifier '{ast.name}' does not reference a known field index. "
+                f"Available indices: {', '.join(sorted(field_indices.keys()))}"
+            )
     
     index = field_indices[field_name]
     

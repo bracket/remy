@@ -156,6 +156,12 @@ class PseudoIndex(object):
             for label in self.notecard_cache.primary_labels:
                 key = (id(type(label)), label)
                 index.add((key, label))
+        elif self.field_name == '@LABEL':
+            # @label pseudo-index: (label, primary_label) pairs for all labels
+            # This maps all labels (including non-primary) to their primary label
+            for label, card in self.notecard_cache.cards_by_label.items():
+                key = (id(type(label)), label)
+                index.add((key, card.primary_label))
         elif self.field_name == '@PRIMARY-LABEL':
             # @primary-label pseudo-index: similar to @id
             for label in self.notecard_cache.primary_labels:
@@ -165,7 +171,7 @@ class PseudoIndex(object):
             # Unknown pseudo-index
             raise RemyError(
                 f"Unknown pseudo-index: {self.field_name}. "
-                f"Known pseudo-indices: @id, @primary-label"
+                f"Known pseudo-indices: @id, @label, @primary-label"
             )
         
         return index

@@ -66,20 +66,40 @@ class NotecardCache(object):
         """
         Get field indices for multiple field names.
         
+        Handles both real field indices and pseudo-indices (fields starting with @).
+        Pseudo-indices like @id are synthesized dynamically rather than being
+        looked up in the config.
+        
         Args:
             field_names: Iterable of field names
         
         Returns:
-            Dictionary mapping uppercase field names to NotecardIndex objects.
-            Fields that don't exist in the config are silently skipped.
+            Dictionary mapping uppercase field names to NotecardIndex or PseudoIndex objects.
+            
+        Raises:
+            RemyError: If a requested field/pseudo-index doesn't exist
         """
+        from remy.notecard_index import PseudoIndex
+        
         indices = {}
         for field_name in field_names:
-            try:
-                indices[field_name.upper()] = self.field_index(field_name)
-            except (KeyError, AttributeError):
-                # Field doesn't exist in config - skip it
-                pass
+            field_name_upper = field_name.upper()
+            
+            # Check if this is a pseudo-index (starts with @)
+            if field_name_upper.startswith('@'):
+                try:
+                    indices[field_name_upper] = PseudoIndex(self, field_name_upper)
+                except RemyError:
+                    # Unknown pseudo-index - let it raise
+                    raise
+            else:
+                # Regular field index
+                try:
+                    indices[field_name_upper] = self.field_index(field_name)
+                except (KeyError, AttributeError):
+                    # Field doesn't exist in config - skip it silently for backward compatibility
+                    pass
+        
         return indices
 
 

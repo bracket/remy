@@ -16,7 +16,8 @@ from remy.exceptions import RemyError, InvalidComparison
 from remy.notecard_index import null
 from remy.query.ast_nodes import (
     ASTNode, Literal, Identifier, Compare, In, And, Or, Not,
-    DateTimeLiteral, DateLiteral, TimedeltaLiteral, BinaryOp, Timedelta, FunctionCall
+    DateTimeLiteral, DateLiteral, TimedeltaLiteral, BinaryOp, Timedelta, FunctionCall,
+    MacroDefinition, MacroReference, StatementList
 )
 from remy.query.set_types import (
     PairSet, LabelSet, ValueSet, create_pairset, 
@@ -33,15 +34,241 @@ if TYPE_CHECKING:
 EvalResult = Union[PairSet, LabelSet, ValueSet]
 
 
+def _resolve_macros(ast: ASTNode) -> ASTNode:
+    """
+    Resolve macro definitions and references in a StatementList AST.
+    
+    This function processes a StatementList containing macro definitions and expressions,
+    resolves all macro references, and returns the final @main expression AST.
+    
+    Args:
+        ast: Either a StatementList with macro definitions or a plain expression AST
+        
+    Returns:
+        The resolved @main expression AST with all macros expanded
+        
+    Raises:
+        RemyError: If there are circular macro dependencies or undefined macros
+    """
+    # If not a StatementList, return as-is (no macros to resolve)
+    # This includes bare MacroReference nodes which will be treated as identifiers
+    if not isinstance(ast, StatementList):
+        return ast
+    
+    # Process statements and build macro definitions
+    # Only the last statement can be unnamed (becomes @main if not already defined)
+    macro_defs = {}
+    
+    for i, stmt in enumerate(ast.statements):
+        if isinstance(stmt, MacroDefinition):
+            if stmt.name in macro_defs:
+                raise RemyError(f"Duplicate macro definition: @{stmt.name}")
+            macro_defs[stmt.name] = stmt
+        else:
+            # This is an unnamed expression statement
+            # Only the last statement can be unnamed
+            if i < len(ast.statements) - 1:
+                raise RemyError(
+                    "Only the last statement can be unnamed. "
+                    "All other statements must be macro definitions."
+                )
+            # The last unnamed statement defines @main (if not already defined)
+            if 'main' in macro_defs:
+                raise RemyError("Cannot have both an explicit @main definition and an unnamed final statement")
+            # Create an implicit @main macro definition
+            macro_defs['main'] = MacroDefinition('main', [], stmt)
+    
+    # Check that @main exists (either explicit or implicit)
+    if 'main' not in macro_defs:
+        raise RemyError("Query must have a @main macro (either explicit or implicit from the last statement)")
+    
+    # Now expand all macro references starting from @main
+    # We need to track what we're currently expanding to detect circular dependencies
+    expansion_stack = []
+    
+    def expand_macros(node: ASTNode, depth: int = 0) -> ASTNode:
+        """Recursively expand macro references in an AST node."""
+        if depth > 100:
+            raise RemyError("Maximum macro expansion depth exceeded (possible circular dependency)")
+        
+        if isinstance(node, MacroReference):
+            # Look up the macro definition
+            # If not found, leave it as-is - it might be a pseudo-index that will be resolved later
+            if node.name not in macro_defs:
+                return node
+            
+            # Check for circular dependency
+            if node.name in expansion_stack:
+                cycle = ' -> '.join(['@' + name for name in expansion_stack + [node.name]])
+                raise RemyError(f"Circular macro dependency detected: {cycle}")
+            
+            macro_def = macro_defs[node.name]
+            
+            # Validate argument count
+            expected_count = len(macro_def.parameters)
+            actual_count = len(node.arguments)
+            if actual_count != expected_count:
+                arg_word = "argument" if expected_count == 1 else "arguments"
+                raise RemyError(
+                    f"Macro @{node.name} expects {expected_count} {arg_word}, "
+                    f"got {actual_count}"
+                )
+            
+            # Build parameter substitution map
+            param_map = {}
+            for param_name, arg_ast in zip(macro_def.parameters, node.arguments):
+                # Recursively expand macros in arguments first
+                param_map[param_name] = expand_macros(arg_ast, depth + 1)
+            
+            # Expand the macro body with parameter substitution
+            expansion_stack.append(node.name)
+            try:
+                result = _substitute_params(macro_def.body, param_map, depth + 1)
+                result = expand_macros(result, depth + 1)
+            finally:
+                expansion_stack.pop()
+            
+            return result
+        
+        # For other node types, recursively expand their children
+        elif isinstance(node, Compare):
+            return Compare(
+                node.operator,
+                expand_macros(node.left, depth),
+                expand_macros(node.right, depth)
+            )
+        elif isinstance(node, And):
+            return And(
+                expand_macros(node.left, depth),
+                expand_macros(node.right, depth)
+            )
+        elif isinstance(node, Or):
+            return Or(
+                expand_macros(node.left, depth),
+                expand_macros(node.right, depth)
+            )
+        elif isinstance(node, Not):
+            return Not(expand_macros(node.operand, depth))
+        elif isinstance(node, In):
+            return In(
+                expand_macros(node.left, depth),
+                [expand_macros(v, depth) for v in node.values]
+            )
+        elif isinstance(node, BinaryOp):
+            return BinaryOp(
+                node.operator,
+                expand_macros(node.left, depth),
+                expand_macros(node.right, depth)
+            )
+        elif isinstance(node, FunctionCall):
+            return FunctionCall(
+                node.function_name,
+                [expand_macros(arg, depth) for arg in node.arguments]
+            )
+        else:
+            # Leaf nodes (literals, identifiers, etc.) - return as-is
+            return node
+    
+    # Expand all macros starting from @main
+    main_macro = macro_defs['main']
+    return expand_macros(main_macro.body)
+
+
+def _substitute_params(node: ASTNode, param_map: Dict[str, ASTNode], depth: int = 0) -> ASTNode:
+    """
+    Substitute parameters in a macro body with their argument ASTs.
+    
+    Args:
+        node: The AST node to substitute in
+        param_map: Dictionary mapping parameter names to their argument ASTs
+        depth: Current recursion depth (for safety)
+        
+    Returns:
+        The AST node with parameters substituted
+    """
+    if depth > 100:
+        raise RemyError("Maximum substitution depth exceeded")
+    
+    # If this is an identifier that matches a parameter name, substitute it
+    if isinstance(node, Identifier) and node.name in param_map:
+        return param_map[node.name]
+    
+    # For other node types, recursively substitute in their children
+    elif isinstance(node, Compare):
+        return Compare(
+            node.operator,
+            _substitute_params(node.left, param_map, depth + 1),
+            _substitute_params(node.right, param_map, depth + 1)
+        )
+    elif isinstance(node, And):
+        return And(
+            _substitute_params(node.left, param_map, depth + 1),
+            _substitute_params(node.right, param_map, depth + 1)
+        )
+    elif isinstance(node, Or):
+        return Or(
+            _substitute_params(node.left, param_map, depth + 1),
+            _substitute_params(node.right, param_map, depth + 1)
+        )
+    elif isinstance(node, Not):
+        return Not(_substitute_params(node.operand, param_map, depth + 1))
+    elif isinstance(node, In):
+        return In(
+            _substitute_params(node.left, param_map, depth + 1),
+            [_substitute_params(v, param_map, depth + 1) for v in node.values]
+        )
+    elif isinstance(node, BinaryOp):
+        return BinaryOp(
+            node.operator,
+            _substitute_params(node.left, param_map, depth + 1),
+            _substitute_params(node.right, param_map, depth + 1)
+        )
+    elif isinstance(node, FunctionCall):
+        return FunctionCall(
+            node.function_name,
+            [_substitute_params(arg, param_map, depth + 1) for arg in node.arguments]
+        )
+    elif isinstance(node, MacroReference):
+        # Substitute parameters in macro reference arguments
+        return MacroReference(
+            node.name,
+            [_substitute_params(arg, param_map, depth + 1) for arg in node.arguments]
+        )
+    else:
+        # Leaf nodes - return as-is
+        return node
+
+
+def resolve_macros(ast: ASTNode) -> ASTNode:
+    """
+    Resolve macro definitions and expand all macro references.
+    
+    This should be called before field extraction to ensure all macros are expanded.
+    Any unresolved MacroReference nodes after this are treated as pseudo-indices.
+    
+    Args:
+        ast: The parsed query AST node (may contain macro definitions)
+        
+    Returns:
+        The fully expanded AST with all macros resolved to @main
+        
+    Raises:
+        RemyError: If there are circular macro dependencies or undefined macros
+    """
+    return _resolve_macros(ast)
+
+
 def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:
     """
     Evaluate a query AST against field indices and return matching primary labels.
 
     This is the main entry point for query evaluation. It evaluates the query
     and projects the result to a LabelSet for backward compatibility.
+    
+    Note: Macro resolution should be done BEFORE calling this function.
 
     Args:
-        ast: The parsed query AST node to evaluate
+        ast: The parsed query AST node to evaluate (macros should already be resolved)
         field_indices: Dictionary mapping uppercase field names to NotecardIndex objects
 
     Returns:
@@ -50,6 +277,7 @@ def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> S
     Raises:
         RemyError: If the query uses unsupported operators or constructs
     """
+    # Evaluate the AST
     result = _evaluate(ast, field_indices)
     
     # Project to LabelSet for output
@@ -94,6 +322,11 @@ def _evaluate(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> EvalRe
         return _evaluate_function_call(ast, field_indices)
     elif isinstance(ast, Identifier):
         return _evaluate_identifier(ast, field_indices)
+    elif isinstance(ast, MacroReference):
+        # Treat unresolved macro references as identifiers (for backward compatibility with @id, @label, etc.)
+        # This happens when @id is used without being defined as a macro
+        identifier_name = '@' + ast.name
+        return _evaluate_identifier(Identifier(identifier_name), field_indices)
     elif isinstance(ast, Not):
         raise RemyError("NOT operator is not yet supported in query evaluation")
     elif isinstance(ast, In):
@@ -199,8 +432,13 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             f"Currently supported: =, <, <=, >, >="
         )
 
-    # Left side must be an Identifier (field name)
-    if not isinstance(ast.left, Identifier):
+    # Left side must be an Identifier (field name) or MacroReference (for backward compatibility with @id, @label)
+    if isinstance(ast.left, Identifier):
+        field_name = ast.left.name.upper()
+    elif isinstance(ast.left, MacroReference):
+        # Treat MacroReference as an identifier (for backward compatibility with @id, @label pseudo-indices)
+        field_name = ('@' + ast.left.name).upper()
+    else:
         raise RemyError(
             f"Left operand of comparison must be an Identifier (field name), "
             f"got {type(ast.left).__name__}"
@@ -221,8 +459,6 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             f"got {type(ast.right).__name__}"
         )
 
-    field_name = ast.left.name.upper()
-
     # Check if the value is a Timedelta - we don't support timedelta comparisons
     if isinstance(value, Timedelta):
         raise InvalidComparison(
@@ -230,9 +466,11 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
             "Timedelta values can only be used in arithmetic with dates/timestamps."
         )
 
-    # If the field doesn't exist in indices, return empty PairSet
-    # (fields are dynamic and optional)
+    # Check if the field exists in indices
+    # Pseudo-indices (@id, @primary-label, etc.) are now handled by field_indices
+    # so they'll be in the dict if they were extracted
     if field_name not in field_indices:
+        # Field doesn't exist - return empty PairSet
         return create_pairset()
 
     index = field_indices[field_name]
@@ -280,41 +518,35 @@ def _evaluate_identifier(ast: Identifier, field_indices: Dict[str, 'NotecardInde
     This allows queries like: join_by_value_to_label(previous, tags="remy")
     where 'previous' references the entire PREVIOUS index.
     
-    Special handling for @id pseudo-index which contains (label, label) pairs
-    for all notecard primary labels.
+    Pseudo-indices (@id, @primary-label, etc.) are now handled uniformly through
+    the field_indices mechanism.
     
     Args:
         ast: Identifier AST node
-        field_indices: Dictionary mapping uppercase field names to NotecardIndex objects
+        field_indices: Dictionary mapping uppercase field names to NotecardIndex or PseudoIndex objects
     
     Returns:
         PairSet containing all pairs from the referenced index
     
     Raises:
-        RemyError: If the identifier doesn't reference a known index
+        RemyError: If the identifier doesn't reference a known index or pseudo-index
     """
     field_name = ast.name.upper()
     
-    # Handle @id pseudo-index
-    if field_name == '@ID':
-        # Create a PairSet with (primary_label, primary_label) for all cards
-        result = create_pairset()
-        # Get all primary labels from any index (they all have access to the cache)
-        if field_indices:
-            # Get the first index to access the notecard cache
-            any_index = next(iter(field_indices.values()))
-            for label in any_index.notecard_cache.primary_labels:
-                # Add (label, label) pair with type prefix
-                typed_value = (id(type(label)), label)
-                result.add((typed_value, label))
-        return result
-    
-    # Regular field index
+    # Check if field exists in indices (includes both real and pseudo-indices)
     if field_name not in field_indices:
-        raise RemyError(
-            f"Identifier '{ast.name}' does not reference a known field index. "
-            f"Available indices: {', '.join(sorted(field_indices.keys()))}"
-        )
+        # Provide a helpful error message indicating it could be a macro or pseudo-index
+        if field_name.startswith('@'):
+            raise RemyError(
+                f"Identifier '@{ast.name.lstrip('@')}' does not reference a known field index, "
+                f"macro, or pseudo-index. "
+                f"Available indices: {', '.join(sorted(field_indices.keys()))}"
+            )
+        else:
+            raise RemyError(
+                f"Identifier '{ast.name}' does not reference a known field index. "
+                f"Available indices: {', '.join(sorted(field_indices.keys()))}"
+            )
     
     index = field_indices[field_name]
     

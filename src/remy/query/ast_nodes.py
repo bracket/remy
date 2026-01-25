@@ -208,3 +208,24 @@ class FunctionCall(ASTNode):
     """Represents a function call (e.g., intersect_by_label(A, B))."""
     function_name: str
     arguments: List[ASTNode]
+
+
+@dataclass
+class MacroDefinition(ASTNode):
+    """Represents a macro definition (e.g., @name := expr or @name(Param1) := expr)."""
+    name: str  # Without the @ prefix
+    parameters: List[str]  # Empty list for zero-arity macros
+    body: ASTNode
+
+
+@dataclass
+class MacroReference(ASTNode):
+    """Represents a macro reference (e.g., @name or @name(arg1, arg2))."""
+    name: str  # Without the @ prefix
+    arguments: List[ASTNode]  # Empty list for zero-arity macros
+
+
+@dataclass
+class StatementList(ASTNode):
+    """Represents a list of statements (macro definitions and expressions)."""
+    statements: List[ASTNode]  # List of MacroDefinition or expression nodes

@@ -12,7 +12,8 @@ from remy.exceptions import RemyError
 from remy.query.grammar import get_parser
 from remy.query.ast_nodes import (
     Literal, Identifier, Compare, In, And, Or, Not,
-    DateTimeLiteral, DateLiteral, Timedelta, TimedeltaLiteral, BinaryOp, FunctionCall
+    DateTimeLiteral, DateLiteral, Timedelta, TimedeltaLiteral, BinaryOp, FunctionCall,
+    MacroDefinition, MacroReference, StatementList
 )
 
 
@@ -419,16 +420,62 @@ class QueryTransformer(Transformer):
         
         return FunctionCall(func_name, func_args)
 
+    def statement_list(self, args):
+        """Transform statement list (list of statements separated by semicolons)."""
+        # Filter out None values (from optional semicolons)
+        statements = [stmt for stmt in args if stmt is not None]
+        return StatementList(statements)
+
+    def statement(self, args):
+        """Transform a single statement (either a macro definition or an expression)."""
+        # A statement has exactly one child - either a macro definition or an expression
+        return args[0]
+
+    def statement_expr(self, args):
+        """Transform a statement that's just an expression."""
+        return args[0]
+
+    def macro_def_zero_arity(self, args):
+        """Transform zero-arity macro definition (@name := expr)."""
+        name_token = args[0]
+        name = str(name_token)[1:]  # Remove @ prefix
+        body = args[1]
+        return MacroDefinition(name, [], body)
+
+    def macro_def_parametric(self, args):
+        """Transform parametric macro definition (@name(Param1, Param2) := expr)."""
+        name_token = args[0]
+        name = str(name_token)[1:]  # Remove @ prefix
+        # All args except the first and last are parameter names
+        params = [str(p) for p in args[1:-1]]
+        body = args[-1]
+        return MacroDefinition(name, params, body)
+
+    def macro_call(self, args):
+        """Transform macro call (@name(arg1, arg2))."""
+        name_token = args[0]
+        name = str(name_token)[1:]  # Remove @ prefix
+        macro_args = args[1:] if len(args) > 1 else []
+        return MacroReference(name, macro_args)
+
+    def macro_ref(self, args):
+        """Transform macro reference (@name)."""
+        name_token = args[0]
+        name = str(name_token)[1:]  # Remove @ prefix
+        return MacroReference(name, [])
+
 
 def parse_query(query):
     """
     Parse a WHERE clause query string into an AST.
 
     Args:
-        query: A string containing a SQL-like WHERE clause
+        query: A string containing a SQL-like WHERE clause or macro-enabled query
 
     Returns:
-        An AST node representing the parsed query
+        An AST node representing the parsed query. For backward compatibility,
+        single expressions without macros return the expression AST directly.
+        Multi-statement queries with macros return a StatementList AST.
 
     Raises:
         RemyError: If the query is malformed or cannot be parsed
@@ -440,6 +487,9 @@ def parse_query(query):
         >>> parse_query("age > 18 AND name = 'Alice'")
         And(Compare('>', Identifier('age'), Literal(18)),
             Compare('=', Identifier('name'), Literal('Alice')))
+        
+        >>> parse_query("@work := tags='work'; @work")
+        StatementList([MacroDefinition('work', [], ...), MacroReference('work', [])])
     """
     if not query or not query.strip():
         raise RemyError("Query cannot be empty")
@@ -449,6 +499,15 @@ def parse_query(query):
         tree = parser.parse(query)
         transformer = QueryTransformer()
         ast = transformer.transform(tree)
+        
+        # Handle backward compatibility: if the result is a StatementList with a single
+        # non-macro-definition statement, unwrap it
+        if isinstance(ast, StatementList):
+            statements = ast.statements
+            # If it's a single statement and not a macro definition, unwrap for backward compat
+            if len(statements) == 1 and not isinstance(statements[0], MacroDefinition):
+                return statements[0]
+        
         return ast
     except lark_exceptions.LarkError as e:
         # Convert Lark exceptions to RemyError with helpful messages

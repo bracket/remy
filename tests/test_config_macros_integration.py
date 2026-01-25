@@ -213,3 +213,31 @@ PARSER_BY_FIELD_NAME = {
     # Should match task1, task2, and task4
     labels = [card.primary_label for card in cards]
     assert set(labels) == {'task1', 'task2', 'task4'}
+
+
+def test_syntax_error_in_config_raises_error(test_cache_dir):
+    """Test that syntax errors in config.py are not silently swallowed."""
+    from remy.exceptions import RemyError
+    
+    # Create a new config with syntax error (missing comma)
+    config_dir = test_cache_dir / '.remy'
+    config_content = '''
+def tags_parser(field):
+    return tuple(f.strip().lower() for f in field.split(','))
+
+PARSER_BY_FIELD_NAME = {
+    'TAGS': tags_parser,
+}
+
+MACROS = {
+    'WORK': '@work := tags="work"'
+    'URGENT': '@urgent := tags="urgent"'
+}
+'''
+    (config_dir / 'config.py').write_text(config_content)
+    
+    cache = NotecardCache(URL(test_cache_dir))
+    
+    # Should raise SyntaxError, not silently fail
+    with pytest.raises(SyntaxError, match="invalid syntax"):
+        execute_query_filter(cache, "tags='work'")

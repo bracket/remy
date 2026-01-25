@@ -39,6 +39,7 @@ A dictionary defining global query macros that are available in all queries. The
 - Config macros can reference each other (forward references are supported)
 - Duplicate macro names within config are not allowed
 - Query-defined macros cannot override config macros
+- Parameters in parametric must start with uppercase letters
 
 **Example**:
 ```python

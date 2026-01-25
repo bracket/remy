@@ -75,7 +75,7 @@ Another closed urgent work task.
 '''
         
         # Write notecard files
-        (tmpdir / 'notes.ntc').write_text(notecard1 + '\n' + notecard2 + '\n' + notecard3 + '\n' + notecard4)
+        (tmpdir / 'notes.ntc').write_text('\n'.join([notecard1, notecard2, notecard3, notecard4]))
         
         yield tmpdir
     finally:

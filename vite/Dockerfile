@@ -25,7 +25,6 @@ RUN if [ "$BUILD_MODE" = "compile" ]; then \
         && asdf install python 3.13.11 \
         && asdf global python 3.13.11 \
         && export MAKE_OPTS="-j1" \
-        && export NODE_BUILD_DEFINITIONS=/root/.asdf/plugins/nodejs/node-build/share/node-build \
         && ASDF_NODEJS_FORCE_COMPILE=1 asdf install --verbose nodejs 24.13.0 \
         && asdf global nodejs 24.13.0; \
     fi

@@ -273,10 +273,16 @@ def execute_query_filter(cache, query_string):
     # Parse the query into an AST
     ast = parse_query(query_string)
     
+    # Macro expansion needs to happen here, before field extraction
+    # Any unresolved macro after expansion should be assuemed to be a field name
+
     # Extract field names from the AST
+    # Extract field names will no longer special case macros, anything prefixed
+    # with '@' is a field name if it hasn't been expanded
     field_names = extract_field_names(ast)
     
     # Build field indices dictionary
+    # Modify extract_field_names to handle the pseudo-indices @id and @primary-label
     field_indices = cache.field_indices(field_names)
     
     # Evaluate the query to get matching primary labels

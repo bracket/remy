@@ -120,3 +120,112 @@ class NotecardIndex(object):
                 return
 
             yield (key[1], label)
+
+
+class PseudoIndex(object):
+    """
+    A pseudo-index that synthesizes data dynamically rather than indexing actual fields.
+    
+    This is used for special indices like @id and @primary-label that don't correspond
+    to actual notecard fields but provide useful synthetic views of the data.
+    """
+    
+    def __init__(self, notecard_cache, field_name):
+        """
+        Initialize a pseudo-index.
+        
+        Args:
+            notecard_cache: NotecardCache instance to access notecard data
+            field_name: Name of the pseudo-index (e.g., '@ID')
+        """
+        self.notecard_cache = notecard_cache
+        self.field_name = field_name.upper()
+    
+    @property
+    def index(self):
+        """
+        Generate the synthetic index data.
+        
+        Returns:
+            SortedSet of ((type_id, value), label) tuples
+        """
+        index = SortedSet()
+        
+        if self.field_name == '@ID':
+            # @id pseudo-index: (label, label) pairs for all primary labels
+            for label in self.notecard_cache.primary_labels:
+                key = (id(type(label)), label)
+                index.add((key, label))
+        elif self.field_name == '@LABEL':
+            # @label pseudo-index: (label, primary_label) pairs for all labels
+            # This maps all labels (including non-primary) to their primary label
+            for label, card in self.notecard_cache.cards_by_label.items():
+                key = (id(type(label)), label)
+                index.add((key, card.primary_label))
+        elif self.field_name == '@PRIMARY-LABEL':
+            # @primary-label pseudo-index: similar to @id
+            for label in self.notecard_cache.primary_labels:
+                key = (id(type(label)), label)
+                index.add((key, label))
+        else:
+            # Unknown pseudo-index
+            raise RemyError(
+                f"Unknown pseudo-index: {self.field_name}. "
+                f"Known pseudo-indices: @id, @label, @primary-label"
+            )
+        
+        return index
+    
+    @property
+    def inverse(self):
+        """Generate inverse index for the pseudo-index."""
+        return list_groupby((label, value) for (_, value), label in self.index)
+    
+    def find(
+        self, 
+        low: Any = null, 
+        high: Any = null, 
+        snap: Optional[str] = None
+    ) -> Generator[Tuple[Any, str], None, None]:
+        """
+        Find entries in the pseudo-index matching the specified range.
+        
+        This uses the same interface as NotecardIndex.find() for compatibility.
+        
+        Args:
+            low: Lower bound (or exact match if high is null)
+            high: Upper bound
+            snap: Boundary behavior (None, 'soft', or 'hard')
+            
+        Yields:
+            Tuples of (value, label) for matching entries
+        """
+        if low is not null:
+            low_key = (id(type(low)), low)
+        else:
+            low_key = (0,)
+
+        if high is not null:
+            high_key = (id(type(high)), high)
+        else:
+            high_key = (sys.maxsize, )
+
+        index = self.index
+        
+        # bisect_left needs a tuple containing the key to search for in the sorted set
+        low_index = index.bisect_left((low_key,))
+        
+        if snap is not None:
+            if snap == 'soft':
+                low_index = max(0, low_index - 1)
+            elif snap == 'hard':
+                low_index = max(0, low_index - 1)
+                key, label = index[low_index]
+                low_index = index.bisect_left((key,))
+            else:
+                raise RemyError("snap must be one of None, 'soft', or 'hard', snap: {}".format(repr(snap)))
+
+        for key, label in index.islice(low_index):
+            if key > high_key:
+                return
+            yield (key[1], label)

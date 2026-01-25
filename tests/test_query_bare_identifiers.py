@@ -124,12 +124,18 @@ def test_bare_identifier_in_join():
 
 def test_at_id_pseudo_index():
     """Test @id pseudo-index containing (label, label) pairs."""
+    from remy.notecard_index import PseudoIndex
+    
     cache = MockNotecardCache(['card1', 'card2', 'card3'])
     
     # Create a mock index just to provide access to the cache
     dummy_index = MockNotecardIndex('DUMMY', {}, notecard_cache=cache)
     
-    field_indices = {'DUMMY': dummy_index}
+    # Include the @id pseudo-index in field_indices
+    field_indices = {
+        'DUMMY': dummy_index,
+        '@ID': PseudoIndex(cache, '@ID')
+    }
     
     # Query: labels(@id) should return all primary labels
     ast = parse_query("labels(@id)")
@@ -139,13 +145,19 @@ def test_at_id_pseudo_index():
 
 def test_at_id_with_status_filter():
     """Test @id combined with status filter."""
+    from remy.notecard_index import PseudoIndex
+    
     cache = MockNotecardCache(['card1', 'card2', 'card3', 'card4'])
     
     status_index = MockNotecardIndex('STATUS', {
         'active': {'card1', 'card3'}
     }, notecard_cache=cache)
     
-    field_indices = {'STATUS': status_index}
+    # Include the @id pseudo-index in field_indices
+    field_indices = {
+        'STATUS': status_index,
+        '@ID': PseudoIndex(cache, '@ID')
+    }
     
     # Query: intersect_by_label(@id, status='active')
     # @id contains all cards: (card1, card1), (card2, card2), (card3, card3), (card4, card4)
@@ -204,6 +216,74 @@ def test_existing_queries_still_work():
     ast = parse_query("tags='foo'")
     result = evaluate_query(ast, field_indices)
     assert result == {'card1', 'card2'}
+
+
+def test_at_id_comparison():
+    """Test @id pseudo-index in comparison operations."""
+    from remy.notecard_index import PseudoIndex
+    
+    cache = MockNotecardCache(['remy', 'test', 'other'])
+    
+    # Create a mock index just to provide access to the cache
+    dummy_index = MockNotecardIndex('DUMMY', {}, notecard_cache=cache)
+    
+    # Include the @id pseudo-index in field_indices
+    field_indices = {
+        'DUMMY': dummy_index,
+        '@ID': PseudoIndex(cache, '@ID')
+    }
+    
+    # Query: @id='remy' should return the card with label 'remy'
+    # @id synthesizes (label, label) pairs, so @id='remy' filters to (remy, remy)
+    ast = parse_query("@id='remy'")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'remy'}
+    
+    # Query: @id='test' should return the card with label 'test'
+    ast = parse_query("@id='test'")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'test'}
+
+
+def test_at_label_pseudo_index():
+    """Test @label pseudo-index that maps all labels to primary labels."""
+    from remy.notecard_index import PseudoIndex
+    
+    cache = MockNotecardCache(['card1', 'card2'])
+    # Add some additional label mappings to simulate aliases
+    cache.primary_labels = ['card1', 'card2']
+    
+    # Mock cards_by_label to include aliases
+    class MockCard:
+        def __init__(self, primary_label):
+            self.primary_label = primary_label
+    
+    cache.cards_by_label = {
+        'card1': MockCard('card1'),
+        'alias1': MockCard('card1'),  # alias1 -> card1
+        'card2': MockCard('card2'),
+        'alias2': MockCard('card2'),  # alias2 -> card2
+    }
+    
+    # Create a mock index
+    dummy_index = MockNotecardIndex('DUMMY', {}, notecard_cache=cache)
+    
+    # Include the @label pseudo-index in field_indices
+    field_indices = {
+        'DUMMY': dummy_index,
+        '@LABEL': PseudoIndex(cache, '@LABEL')
+    }
+    
+    # Query: labels(@label) should return all primary labels (from all label mappings)
+    ast = parse_query("labels(@label)")
+    result = evaluate_query(ast, field_indices)
+    # Should return primary labels for all the label entries
+    assert result == {'card1', 'card2'}
+    
+    # Query: @label='alias1' should return card1 (the primary label for alias1)
+    ast = parse_query("@label='alias1'")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1'}
 
 
 if __name__ == '__main__':

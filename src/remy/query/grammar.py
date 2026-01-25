@@ -7,10 +7,16 @@ used to filter notecards based on metadata.
 
 from lark import Lark
 
-# Lark grammar for WHERE clause queries
-# Uses LALR parser for performance
+# Lark grammar for WHERE clause queries with macro support
+# Uses Earley parser for better handling of ambiguous grammar
 QUERY_GRAMMAR = r"""
-    ?start: or_expr
+    ?start: statement_list
+
+    statement_list: statement (";" statement)* ";"?
+
+    statement: MACRO_NAME ":=" or_expr                                    -> macro_def_zero_arity
+             | MACRO_NAME "(" PARAM_NAME ("," PARAM_NAME)* ")" ":=" or_expr  -> macro_def_parametric
+             | or_expr                                                         -> statement_expr
 
     ?or_expr: and_expr
             | or_expr _OR and_expr   -> or_op
@@ -31,7 +37,9 @@ QUERY_GRAMMAR = r"""
              | additive "+" primary  -> add_op
              | additive "-" primary  -> sub_op
 
-    ?primary: function_call
+    ?primary: macro_call
+            | function_call
+            | macro_ref
             | identifier
             | datetime_literal
             | date_literal
@@ -39,8 +47,10 @@ QUERY_GRAMMAR = r"""
             | literal
             | "(" or_expr ")"
 
-    function_call: DOTTED_NAME "(" [or_expr ("," or_expr)*] ")"
-    identifier: DOTTED_NAME
+    macro_call: MACRO_NAME "(" [or_expr ("," or_expr)*] ")"
+    macro_ref: MACRO_NAME
+    function_call: FUNC_NAME "(" [or_expr ("," or_expr)*] ")"
+    identifier: IDENTIFIER
     literal: STRING | NUMBER | TRUE | FALSE | NULL
     datetime_literal: STRING DATETIME_CAST
     date_literal: STRING DATE_CAST
@@ -58,7 +68,10 @@ QUERY_GRAMMAR = r"""
     FALSE.2: /\bfalse\b/i
     NULL.2: /\bnull\b/i
 
-    DOTTED_NAME: /@?[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
+    MACRO_NAME: /@[_a-z][_a-z0-9]*/
+    PARAM_NAME: /[A-Z][a-zA-Z0-9]*/
+    FUNC_NAME: /[_a-z][_a-z0-9]*/
+    IDENTIFIER: /[_a-zA-Z][_a-zA-Z0-9]*(\.[_a-zA-Z][_a-zA-Z0-9]*)*/
 
     STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
 
@@ -76,4 +89,6 @@ QUERY_GRAMMAR = r"""
 
 def get_parser():
     """Get or create the Lark parser instance."""
-    return Lark(QUERY_GRAMMAR, parser='lalr')
+    # Use Earley parser to handle ambiguity in macro definitions
+    # The 'resolve' option automatically resolves ambiguities using priority rules
+    return Lark(QUERY_GRAMMAR, parser='earley')

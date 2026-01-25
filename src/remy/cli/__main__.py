@@ -267,16 +267,33 @@ def execute_query_filter(cache, query_string):
         RemyError: If query parsing or evaluation fails
     """
     from remy.query.parser import parse_query
-    from remy.query.eval import evaluate_query, resolve_macros
+    from remy.query.eval import evaluate_query, resolve_macros, parse_config_macros
     from remy.query.util import extract_field_names
+    from remy.exceptions import RemyError
     
     # Parse the query into an AST
     ast = parse_query(query_string)
     
+    # Load config macros if available
+    config_macros = None
+    try:
+        config_module = cache.config_module
+        if hasattr(config_module, 'MACROS'):
+            # Parse config macro strings into MacroDefinition nodes
+            config_macros = parse_config_macros(config_module.MACROS)
+    except RemyError as e:
+        # Config file not found - this is okay for the query command
+        # Macros are optional
+        if "Configuration file not found" in str(e):
+            pass
+        else:
+            # Other RemyErrors (e.g., macro parsing errors) should propagate
+            raise
+    
     # Resolve macros before field extraction
     # This expands all macro definitions and returns the @main expression AST
     # Any MacroReference nodes left after this are pseudo-indices
-    ast = resolve_macros(ast)
+    ast = resolve_macros(ast, config_macros)
     
     # Extract field names from the fully expanded AST
     # After macro expansion, anything with '@' is a field name (pseudo-index)

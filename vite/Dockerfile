@@ -20,11 +20,12 @@ RUN . /asdf/asdf.sh \
 # Compile mode: Build Python and Node.js from source (takes ~85 minutes)
 # This is used by the snapshot-builder service to create root_asdf.tbz2
 # MAKE_OPTS can be set to control parallelism (e.g., -j2 to limit to 2 cores)
+# NODE_BUILD_VERBOSE=1 enables verbose output for Node.js compilation
 RUN if [ "$BUILD_MODE" = "compile" ]; then \
         . /asdf/asdf.sh \
         && asdf install python 3.13.11 \
         && asdf global python 3.13.11 \
-        && ASDF_NODEJS_FORCE_COMPILE=1 MAKE_OPTS="${MAKE_OPTS:--j2}" asdf install nodejs 24.13.0 \
+        && ASDF_NODEJS_FORCE_COMPILE=1 MAKE_OPTS="${MAKE_OPTS:--j2}" NODE_BUILD_VERBOSE=1 asdf install nodejs 24.13.0 --verbose \
         && asdf global nodejs 24.13.0; \
     fi
 

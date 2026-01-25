@@ -68,9 +68,9 @@ Before setting up the Remy web interface, ensure you have:
 
 ### System Requirements
 
-- **Memory**: 8 GB minimum for snapshot creation (Node.js compilation is memory-intensive)
-  - Docker Desktop should be configured with at least 8 GB memory allocation
-  - The snapshot-builder service is pre-configured with 8 GB memory limits
+- **Memory**: 16 GB minimum for snapshot creation (Node.js compilation is memory-intensive)
+  - Docker Desktop should be configured with at least 16 GB memory allocation
+  - The snapshot-builder service is pre-configured with 16 GB memory limits
 - **CPU**: Multi-core processor recommended (build uses parallel compilation)
 - **OS**: Linux, macOS, or Windows with WSL2
 
@@ -78,8 +78,8 @@ Before setting up the Remy web interface, ensure you have:
 
 If you encounter out-of-memory errors during snapshot creation:
 
-1. **macOS**: Docker Desktop → Preferences → Resources → Memory → Set to 8 GB or higher
-2. **Windows**: Docker Desktop → Settings → Resources → Memory → Set to 8 GB or higher
+1. **macOS**: Docker Desktop → Preferences → Resources → Memory → Set to 16 GB or higher
+2. **Windows**: Docker Desktop → Settings → Resources → Memory → Set to 16 GB or higher
 3. Restart Docker Desktop after changing memory settings
 
 ---
@@ -156,8 +156,9 @@ The `snapshot-builder` Docker Compose service automates the snapshot creation pr
 - Builds the image in `compile` mode
 - Mounts the `vite/` directory so the container can write the snapshot file
 - Creates `root_asdf.tbz2` containing `/root/.asdf` and `/root/.tool-versions`
-- Pre-configured with 8 GB memory limits and optimized build settings
+- Pre-configured with 16 GB memory limits and optimized build settings
 - Uses limited parallelism (`-j2`) to reduce memory usage during Node.js compilation
+- Verbose logging enabled for Node.js compilation to monitor build progress
 - Exits automatically when complete
 
 You no longer need to manually edit the Dockerfile or run external scripts.
@@ -414,13 +415,13 @@ Open http://localhost:5000 in your browser (note: port 5000, not 3000).
 **Solutions:**
 
 1. **Increase Docker Desktop memory allocation** (macOS/Windows):
-   - macOS: Docker Desktop → Preferences → Resources → Memory → Set to 8 GB minimum
-   - Windows: Docker Desktop → Settings → Resources → Memory → Set to 8 GB minimum
+   - macOS: Docker Desktop → Preferences → Resources → Memory → Set to 16 GB minimum
+   - Windows: Docker Desktop → Settings → Resources → Memory → Set to 16 GB minimum
    - Restart Docker Desktop after changing settings
 
 2. **For Linux with limited RAM**, the snapshot-builder is already configured with:
-   - 8 GB memory limit (`mem_limit: 8g`)
-   - 2 GB shared memory (`shm_size: '2gb'`)
+   - 16 GB memory limit (`mem_limit: 16g`)
+   - 4 GB shared memory (`shm_size: '4gb'`)
    - Reduced parallelism (`MAKE_OPTS=-j2`) to limit concurrent compilation
    
    If you still encounter issues, ensure your system has adequate swap space configured.

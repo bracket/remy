@@ -34,7 +34,100 @@ if TYPE_CHECKING:
 EvalResult = Union[PairSet, LabelSet, ValueSet]
 
 
-def _resolve_macros(ast: ASTNode) -> ASTNode:
+def _contains_macro_reference(node: ASTNode) -> bool:
+    """
+    Check if an AST node contains any MacroReference nodes.
+    
+    Args:
+        node: The AST node to check
+        
+    Returns:
+        True if the node or any of its children contain a MacroReference
+    """
+    if isinstance(node, MacroReference):
+        return True
+    elif isinstance(node, (Compare, And, Or, BinaryOp)):
+        return _contains_macro_reference(node.left) or _contains_macro_reference(node.right)
+    elif isinstance(node, Not):
+        return _contains_macro_reference(node.operand)
+    elif isinstance(node, In):
+        return _contains_macro_reference(node.left) or any(_contains_macro_reference(v) for v in node.values)
+    elif isinstance(node, FunctionCall):
+        return any(_contains_macro_reference(arg) for arg in node.arguments)
+    else:
+        return False
+
+
+def parse_config_macros(config_macros_dict: Dict[str, str]) -> Dict[str, MacroDefinition]:
+    """
+    Parse config macro definition strings into MacroDefinition AST nodes.
+    
+    Args:
+        config_macros_dict: Dictionary mapping keys to macro definition strings
+                           (e.g., {'WORK': '@work := tags="work"'})
+    
+    Returns:
+        Dictionary mapping macro names to MacroDefinition AST nodes
+    
+    Raises:
+        RemyError: If a macro string cannot be parsed or contains @main
+    """
+    from remy.query.parser import parse_query
+    
+    if not config_macros_dict:
+        return {}
+    
+    parsed_macros = {}
+    
+    for key, macro_str in config_macros_dict.items():
+        if not macro_str or not macro_str.strip():
+            raise RemyError(f"Config macro '{key}' has empty definition string")
+        
+        # Parse the macro definition string
+        try:
+            ast = parse_query(macro_str)
+        except Exception as e:
+            raise RemyError(f"Failed to parse config macro '{key}': {str(e)}")
+        
+        # Extract the macro definition from the parsed AST
+        # It should be a StatementList with a single MacroDefinition
+        if isinstance(ast, StatementList):
+            if len(ast.statements) != 1:
+                raise RemyError(
+                    f"Config macro '{key}' must contain exactly one macro definition, "
+                    f"got {len(ast.statements)} statements"
+                )
+            stmt = ast.statements[0]
+        else:
+            # Single statement, not wrapped in StatementList
+            stmt = ast
+        
+        # Verify it's a MacroDefinition
+        if not isinstance(stmt, MacroDefinition):
+            raise RemyError(
+                f"Config macro '{key}' must be a macro definition (e.g., '@name := expr'), "
+                f"got {type(stmt).__name__}"
+            )
+        
+        # Forbid @main in config macros
+        if stmt.name == 'main':
+            raise RemyError(
+                f"Config macro '{key}' cannot define @main. "
+                f"The @main macro must be defined in the query itself, not in config."
+            )
+        
+        # Check for duplicates within config
+        if stmt.name in parsed_macros:
+            raise RemyError(
+                f"Duplicate config macro definition: @{stmt.name} is defined multiple times in config"
+            )
+        
+        parsed_macros[stmt.name] = stmt
+    
+    return parsed_macros
+
+
+def _resolve_macros(ast: ASTNode, config_macros: Dict[str, MacroDefinition] = None) -> ASTNode:
     """
     Resolve macro definitions and references in a StatementList AST.
     
@@ -43,6 +136,7 @@ def _resolve_macros(ast: ASTNode) -> ASTNode:
     
     Args:
         ast: Either a StatementList with macro definitions or a plain expression AST
+        config_macros: Optional dictionary of macro definitions from config (name -> MacroDefinition)
         
     Returns:
         The resolved @main expression AST with all macros expanded
@@ -50,37 +144,53 @@ def _resolve_macros(ast: ASTNode) -> ASTNode:
     Raises:
         RemyError: If there are circular macro dependencies or undefined macros
     """
-    # If not a StatementList, return as-is (no macros to resolve)
-    # This includes bare MacroReference nodes which will be treated as identifiers
+    # Start with config macros (if any)
+    macro_defs = dict(config_macros) if config_macros else {}
+    
+    # If not a StatementList, we still need to expand macros if config_macros are present
+    # Convert it to a StatementList with implicit @main
     if not isinstance(ast, StatementList):
-        return ast
-    
-    # Process statements and build macro definitions
-    # Only the last statement can be unnamed (becomes @main if not already defined)
-    macro_defs = {}
-    
-    for i, stmt in enumerate(ast.statements):
-        if isinstance(stmt, MacroDefinition):
-            if stmt.name in macro_defs:
-                raise RemyError(f"Duplicate macro definition: @{stmt.name}")
-            macro_defs[stmt.name] = stmt
+        # If it's a plain expression, treat it as an implicit @main
+        # But only if we have config macros to resolve, or if it contains macro references
+        if config_macros or isinstance(ast, MacroReference) or _contains_macro_reference(ast):
+            # Create implicit @main definition
+            if 'main' not in macro_defs:
+                macro_defs['main'] = MacroDefinition('main', [], ast)
         else:
-            # This is an unnamed expression statement
-            # Only the last statement can be unnamed
-            if i < len(ast.statements) - 1:
-                raise RemyError(
-                    "Only the last statement can be unnamed. "
-                    "All other statements must be macro definitions."
-                )
-            # The last unnamed statement defines @main (if not already defined)
-            if 'main' in macro_defs:
-                raise RemyError("Cannot have both an explicit @main definition and an unnamed final statement")
-            # Create an implicit @main macro definition
-            macro_defs['main'] = MacroDefinition('main', [], stmt)
-    
-    # Check that @main exists (either explicit or implicit)
-    if 'main' not in macro_defs:
-        raise RemyError("Query must have a @main macro (either explicit or implicit from the last statement)")
+            # No macros to resolve
+            return ast
+    else:
+        # Process statements and build macro definitions
+        # Only the last statement can be unnamed (becomes @main if not already defined)
+        
+        for i, stmt in enumerate(ast.statements):
+            if isinstance(stmt, MacroDefinition):
+                if stmt.name in macro_defs:
+                    # Check if this is a duplicate from config or query
+                    if config_macros and stmt.name in config_macros:
+                        raise RemyError(
+                            f"Duplicate macro definition: @{stmt.name} is already defined in config"
+                        )
+                    else:
+                        raise RemyError(f"Duplicate macro definition: @{stmt.name}")
+                macro_defs[stmt.name] = stmt
+            else:
+                # This is an unnamed expression statement
+                # Only the last statement can be unnamed
+                if i < len(ast.statements) - 1:
+                    raise RemyError(
+                        "Only the last statement can be unnamed. "
+                        "All other statements must be macro definitions."
+                    )
+                # The last unnamed statement defines @main (if not already defined)
+                if 'main' in macro_defs:
+                    raise RemyError("Cannot have both an explicit @main definition and an unnamed final statement")
+                # Create an implicit @main macro definition
+                macro_defs['main'] = MacroDefinition('main', [], stmt)
+        
+        # Check that @main exists (either explicit or implicit)
+        if 'main' not in macro_defs:
+            raise RemyError("Query must have a @main macro (either explicit or implicit from the last statement)")
     
     # Now expand all macro references starting from @main
     # We need to track what we're currently expanding to detect circular dependencies
@@ -239,7 +349,7 @@ def _substitute_params(node: ASTNode, param_map: Dict[str, ASTNode], depth: int 
         return node
 
 
-def resolve_macros(ast: ASTNode) -> ASTNode:
+def resolve_macros(ast: ASTNode, config_macros: Dict[str, MacroDefinition] = None) -> ASTNode:
     """
     Resolve macro definitions and expand all macro references.
     
@@ -248,6 +358,7 @@ def resolve_macros(ast: ASTNode) -> ASTNode:
     
     Args:
         ast: The parsed query AST node (may contain macro definitions)
+        config_macros: Optional dictionary of macro definitions from config (name -> MacroDefinition)
         
     Returns:
         The fully expanded AST with all macros resolved to @main
@@ -255,7 +366,7 @@ def resolve_macros(ast: ASTNode) -> ASTNode:
     Raises:
         RemyError: If there are circular macro dependencies or undefined macros
     """
-    return _resolve_macros(ast)
+    return _resolve_macros(ast, config_macros)
 
 
 def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:

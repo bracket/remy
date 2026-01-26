@@ -740,6 +740,14 @@ def _evaluate_function_call(ast: FunctionCall, field_indices: Dict[str, 'Notecar
         return _call_labels(ast, field_indices)
     elif func_name == 'values':
         return _call_values(ast, field_indices)
+    elif func_name == 'slice_by_label':
+        return _call_slice_by_label(ast, field_indices)
+    elif func_name == 'slice_by_value':
+        return _call_slice_by_value(ast, field_indices)
+    elif func_name == 'slice_by_label_from':
+        return _call_slice_by_label_from(ast, field_indices)
+    elif func_name == 'slice_by_value_from':
+        return _call_slice_by_value_from(ast, field_indices)
     else:
         raise RemyError(f"Unknown function: {ast.function_name}")
 
@@ -860,6 +868,98 @@ def _call_flip(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> 
     a = _evaluate(ast.arguments[0], field_indices)
     
     return _flip(a)
+
+
+def _call_slice_by_label(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """Evaluate slice_by_label(PairSet, start, end) function."""
+    if len(ast.arguments) != 3:
+        raise RemyError(f"slice_by_label expects 3 arguments, got {len(ast.arguments)}")
+    
+    pairset = _evaluate(ast.arguments[0], field_indices)
+    start_node = ast.arguments[1]
+    end_node = ast.arguments[2]
+    
+    # Evaluate start and end - they should be Literal nodes with integer values
+    if not isinstance(start_node, Literal):
+        raise RemyError("slice_by_label: start index must be an integer literal")
+    if not isinstance(end_node, Literal):
+        raise RemyError("slice_by_label: end index must be an integer literal")
+    
+    start = start_node.value
+    end = end_node.value
+    
+    if not isinstance(start, int):
+        raise RemyError(f"slice_by_label: start index must be an integer, got {type(start).__name__}")
+    if not isinstance(end, int):
+        raise RemyError(f"slice_by_label: end index must be an integer, got {type(end).__name__}")
+    
+    return _slice_by_label(pairset, start, end)
+
+
+def _call_slice_by_value(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """Evaluate slice_by_value(PairSet, start, end) function."""
+    if len(ast.arguments) != 3:
+        raise RemyError(f"slice_by_value expects 3 arguments, got {len(ast.arguments)}")
+    
+    pairset = _evaluate(ast.arguments[0], field_indices)
+    start_node = ast.arguments[1]
+    end_node = ast.arguments[2]
+    
+    # Evaluate start and end - they should be Literal nodes with integer values
+    if not isinstance(start_node, Literal):
+        raise RemyError("slice_by_value: start index must be an integer literal")
+    if not isinstance(end_node, Literal):
+        raise RemyError("slice_by_value: end index must be an integer literal")
+    
+    start = start_node.value
+    end = end_node.value
+    
+    if not isinstance(start, int):
+        raise RemyError(f"slice_by_value: start index must be an integer, got {type(start).__name__}")
+    if not isinstance(end, int):
+        raise RemyError(f"slice_by_value: end index must be an integer, got {type(end).__name__}")
+    
+    return _slice_by_value(pairset, start, end)
+
+
+def _call_slice_by_label_from(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """Evaluate slice_by_label_from(PairSet, start) function."""
+    if len(ast.arguments) != 2:
+        raise RemyError(f"slice_by_label_from expects 2 arguments, got {len(ast.arguments)}")
+    
+    pairset = _evaluate(ast.arguments[0], field_indices)
+    start_node = ast.arguments[1]
+    
+    # Evaluate start - it should be a Literal node with integer value
+    if not isinstance(start_node, Literal):
+        raise RemyError("slice_by_label_from: start index must be an integer literal")
+    
+    start = start_node.value
+    
+    if not isinstance(start, int):
+        raise RemyError(f"slice_by_label_from: start index must be an integer, got {type(start).__name__}")
+    
+    return _slice_by_label_from(pairset, start)
+
+
+def _call_slice_by_value_from(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """Evaluate slice_by_value_from(PairSet, start) function."""
+    if len(ast.arguments) != 2:
+        raise RemyError(f"slice_by_value_from expects 2 arguments, got {len(ast.arguments)}")
+    
+    pairset = _evaluate(ast.arguments[0], field_indices)
+    start_node = ast.arguments[1]
+    
+    # Evaluate start - it should be a Literal node with integer value
+    if not isinstance(start_node, Literal):
+        raise RemyError("slice_by_value_from: start index must be an integer literal")
+    
+    start = start_node.value
+    
+    if not isinstance(start, int):
+        raise RemyError(f"slice_by_value_from: start index must be an integer, got {type(start).__name__}")
+    
+    return _slice_by_value_from(pairset, start)
 
 
 # ============================================================================
@@ -1235,5 +1335,189 @@ def _flip(a: EvalResult) -> PairSet:
         # The original value becomes the new label (second position)
         typed_new_value = (id(type(label)), label)
         result.add((typed_new_value, value))
+    
+    return result
+
+
+def _normalize_index(index: int, length: int) -> int:
+    """
+    Normalize a potentially negative index to a positive index.
+    
+    Args:
+        index: The index to normalize (can be negative)
+        length: The length of the sequence
+        
+    Returns:
+        Normalized positive index, clamped to [0, length]
+    """
+    if index < 0:
+        # Negative indices count from the end
+        normalized = length + index
+    else:
+        normalized = index
+    
+    # Clamp to valid range [0, length]
+    # Note: We allow length as a valid "end" position for slicing
+    return max(0, min(normalized, length))
+
+
+def _slice_by_label(a: EvalResult, start: int, end: int) -> PairSet:
+    """
+    Slice a PairSet by label (sorted by first component).
+    
+    Returns pairs from index start (inclusive) to index end (exclusive)
+    when the PairSet is sorted by label.
+    
+    Args:
+        a: PairSet to slice
+        start: Start index (0-based, can be negative)
+        end: End index (0-based, can be negative, exclusive)
+        
+    Returns:
+        PairSet containing the sliced pairs
+        
+    Raises:
+        RemyError: If argument is not a PairSet
+    """
+    # A must be a PairSet
+    if not isinstance(a, SortedSet):
+        raise RemyError(f"slice_by_label: argument must be a PairSet, got {type(a).__name__}")
+    
+    # PairSets are already sorted by (typed_value, label), where typed_value is (type_id, value)
+    # To sort by label, we need to create a list of pairs sorted by label
+    pairs_list = sorted(list(a), key=lambda pair: pair[1])  # Sort by label (second element)
+    
+    length = len(pairs_list)
+    
+    # Normalize negative indices
+    norm_start = _normalize_index(start, length)
+    norm_end = _normalize_index(end, length)
+    
+    # If start >= end, return empty PairSet
+    if norm_start >= norm_end:
+        return create_pairset()
+    
+    # Slice the list and convert back to PairSet
+    sliced_pairs = pairs_list[norm_start:norm_end]
+    result = create_pairset()
+    for pair in sliced_pairs:
+        result.add(pair)
+    
+    return result
+
+
+def _slice_by_value(a: EvalResult, start: int, end: int) -> PairSet:
+    """
+    Slice a PairSet by value (sorted by second component).
+    
+    Returns pairs from index start (inclusive) to index end (exclusive)
+    when the PairSet is sorted by value.
+    
+    Args:
+        a: PairSet to slice
+        start: Start index (0-based, can be negative)
+        end: End index (0-based, can be negative, exclusive)
+        
+    Returns:
+        PairSet containing the sliced pairs
+        
+    Raises:
+        RemyError: If argument is not a PairSet
+    """
+    # A must be a PairSet
+    if not isinstance(a, SortedSet):
+        raise RemyError(f"slice_by_value: argument must be a PairSet, got {type(a).__name__}")
+    
+    # PairSets are stored as ((type_id, value), label) tuples
+    # They are already sorted by typed_value, which is what we want for "by value" sorting
+    pairs_list = list(a)
+    
+    length = len(pairs_list)
+    
+    # Normalize negative indices
+    norm_start = _normalize_index(start, length)
+    norm_end = _normalize_index(end, length)
+    
+    # If start >= end, return empty PairSet
+    if norm_start >= norm_end:
+        return create_pairset()
+    
+    # Slice the list and convert back to PairSet
+    sliced_pairs = pairs_list[norm_start:norm_end]
+    result = create_pairset()
+    for pair in sliced_pairs:
+        result.add(pair)
+    
+    return result
+
+
+def _slice_by_label_from(a: EvalResult, start: int) -> PairSet:
+    """
+    Slice a PairSet by label from start to end (sorted by first component).
+    
+    Returns pairs from index start (inclusive) to the end
+    when the PairSet is sorted by label.
+    
+    Args:
+        a: PairSet to slice
+        start: Start index (0-based, can be negative)
+        
+    Returns:
+        PairSet containing the sliced pairs
+        
+    Raises:
+        RemyError: If argument is not a PairSet
+    """
+    # A must be a PairSet
+    if not isinstance(a, SortedSet):
+        raise RemyError(f"slice_by_label_from: argument must be a PairSet, got {type(a).__name__}")
+    
+    # Sort by label and slice from start to end
+    pairs_list = sorted(list(a), key=lambda pair: pair[1])
+    
+    length = len(pairs_list)
+    norm_start = _normalize_index(start, length)
+    
+    # Slice from start to end
+    sliced_pairs = pairs_list[norm_start:]
+    result = create_pairset()
+    for pair in sliced_pairs:
+        result.add(pair)
+    
+    return result
+
+
+def _slice_by_value_from(a: EvalResult, start: int) -> PairSet:
+    """
+    Slice a PairSet by value from start to end (sorted by second component).
+    
+    Returns pairs from index start (inclusive) to the end
+    when the PairSet is sorted by value.
+    
+    Args:
+        a: PairSet to slice
+        start: Start index (0-based, can be negative)
+        
+    Returns:
+        PairSet containing the sliced pairs
+        
+    Raises:
+        RemyError: If argument is not a PairSet
+    """
+    # A must be a PairSet
+    if not isinstance(a, SortedSet):
+        raise RemyError(f"slice_by_value_from: argument must be a PairSet, got {type(a).__name__}")
+    
+    # PairSets are already sorted by value
+    pairs_list = list(a)
+    
+    length = len(pairs_list)
+    norm_start = _normalize_index(start, length)
+    
+    # Slice from start to end
+    sliced_pairs = pairs_list[norm_start:]
+    result = create_pairset()
+    for pair in sliced_pairs:
+        result.add(pair)
     
     return result

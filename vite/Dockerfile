@@ -24,8 +24,8 @@ RUN if [ "$BUILD_MODE" = "compile" ]; then \
         . /asdf/asdf.sh \
         && asdf install python 3.13.11 \
         && asdf global python 3.13.11 \
-        && export MAKE_OPTS="-j1" \
-        && ASDF_NODEJS_FORCE_COMPILE=1 asdf install --verbose nodejs 24.13.0 \
+        && export MAKE_OPTS="-j4" \
+        && ASDF_NODEJS_FORCE_COMPILE=1 ASDF_NODEJS_CONCURRENCY=4 asdf install nodejs 24.13.0 \
         && asdf global nodejs 24.13.0; \
     fi
 

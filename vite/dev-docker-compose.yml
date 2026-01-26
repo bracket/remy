@@ -1,4 +1,3 @@
-version: '3'
 services:
   remy-vite:
     cap_add:

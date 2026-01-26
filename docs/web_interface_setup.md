@@ -31,6 +31,10 @@ This guide explains how to set up, build, and run the Remy web interface locally
 For developers who want to get started immediately:
 
 ```bash
+# 0. Generate the snapshot (first time only, takes ~85 minutes)
+cd vite
+docker-compose run --rm snapshot-builder
+
 # 1. Navigate to the vite directory
 cd vite
 
@@ -45,7 +49,7 @@ python -m remy.www --cache /path/to/your/notecards
 # Open http://localhost:3000 in your browser
 ```
 
-**Note**: The first build will take approximately 85 minutes if no snapshot exists. See [Initial Docker Build](#initial-docker-build) for details.
+**Note**: The first time you set up the environment, you need to generate the snapshot using `docker-compose run --rm snapshot-builder`. This takes approximately 85 minutes. Subsequent builds will be much faster (a few minutes) as they reuse the snapshot.
 
 ---
 
@@ -64,9 +68,19 @@ Before setting up the Remy web interface, ensure you have:
 
 ### System Requirements
 
-- **Memory**: 4 GB minimum, 8 GB recommended for building
+- **Memory**: 16 GB minimum for snapshot creation (Node.js compilation is memory-intensive)
+  - Docker Desktop should be configured with at least 16 GB memory allocation
+  - The snapshot-builder service is pre-configured with 16 GB memory limits
 - **CPU**: Multi-core processor recommended (build uses parallel compilation)
 - **OS**: Linux, macOS, or Windows with WSL2
+
+#### Configuring Docker Desktop Memory (macOS/Windows)
+
+If you encounter out-of-memory errors during snapshot creation:
+
+1. **macOS**: Docker Desktop → Preferences → Resources → Memory → Set to 16 GB or higher
+2. **Windows**: Docker Desktop → Settings → Resources → Memory → Set to 16 GB or higher
+3. Restart Docker Desktop after changing memory settings
 
 ---
 
@@ -86,7 +100,7 @@ The Remy web interface consists of three main components:
 
 3. **Docker Environment** (`vite/Dockerfile`)
    - Alpine Linux-based container
-   - Builds Python 3.12.2 and Node.js 21.6.2 from source using asdf
+   - Builds Python 3.13.11 and Node.js 24.13.0 from source using asdf
    - Provides a consistent development and build environment
 
 ### Communication Flow
@@ -105,7 +119,7 @@ In development, Vite proxies API requests from `/api/*` to the Flask backend run
 
 ### Understanding the Build Time
 
-The Docker container builds Python 3.12.2 and Node.js 21.6.2 from source using [asdf](https://asdf-vm.com/) version manager. This approach provides:
+The Docker container builds Python 3.13.11 and Node.js 24.13.0 from source using [asdf](https://asdf-vm.com/) version manager. This approach provides:
 
 - **Full control** over the build process and optimization flags
 - **Consistency** across different environments
@@ -118,70 +132,79 @@ However, compiling Node.js from source takes approximately **85 minutes** on a t
 To avoid rebuilding the environment every time, Remy uses a **snapshot mechanism** that caches the compiled Python and Node.js interpreters.
 
 The snapshot is a compressed tarball (`root_asdf.tbz2`) that contains:
-- Compiled Python 3.12.2 interpreter and packages
-- Compiled Node.js 21.6.2 interpreter and npm
+- Compiled Python 3.13.11 interpreter and packages
+- Compiled Node.js 24.13.0 interpreter and npm
 - asdf configuration and tool versions
 
 **How it works:**
 
-1. **Without snapshot**: The Dockerfile builds Python and Node.js from scratch (see the commented-out RUN command in the Dockerfile at lines 24-28)
-2. **With snapshot**: The Dockerfile extracts the pre-built interpreters from `root_asdf.tbz2` (see the RUN command with bind mount at lines 30-31)
+The Dockerfile supports two build modes via the `BUILD_MODE` argument:
+
+1. **`BUILD_MODE=compile`**: Builds Python and Node.js from scratch (takes approximately 85 minutes)
+   - Used by the `snapshot-builder` service to create the snapshot tarball
+   - Compiles everything from source for maximum compatibility and optimization
+
+2. **`BUILD_MODE=restore`** (default): Extracts pre-built interpreters from `root_asdf.tbz2`
+   - Used by standard builds for fast image creation
+   - Requires the snapshot file to be present in the `vite/` directory
 
 The snapshot file should be placed in the `vite/` directory and will be bind-mounted during the Docker build.
 
+**Automated Snapshot Creation:**
+
+The `snapshot-builder` Docker Compose service automates the snapshot creation process:
+- Builds the image in `compile` mode
+- Mounts the `vite/` directory so the container can write the snapshot file
+- Creates `root_asdf.tbz2` containing `/root/.asdf` and `/root/.tool-versions`
+- Pre-configured with 16 GB memory limits and optimized build settings
+- Uses single-threaded compilation (`-j1`) to minimize memory usage during Node.js V8 compilation
+- Verbose logging enabled for Node.js compilation to monitor build progress
+- Exits automatically when complete
+
+You no longer need to manually edit the Dockerfile or run external scripts.
+
 ### Creating a Snapshot
 
-If you need to create a new snapshot (e.g., after updating Python or Node.js versions):
+The snapshot mechanism is now automated via Docker Compose. You no longer need to manually edit the Dockerfile or run external scripts.
 
-1. **Build the container from scratch** by editing `vite/Dockerfile`:
+**To create a new snapshot** (e.g., after updating Python or Node.js versions):
 
-   Find and uncomment the RUN command that installs Python and Node.js (lines 24-28):
-   ```dockerfile
-   RUN . /asdf/asdf.sh \
-       && asdf install python 3.12.2 \
-       && asdf global python 3.12.2 \
-       && ASDF_NODEJS_FORCE_COMPILE=1 asdf install nodejs 21.6.2 \
-       && asdf global nodejs 21.6.2
-   ```
-
-   Find and comment out the RUN command that extracts the snapshot (lines 30-31):
-   ```dockerfile
-   # RUN --mount=type=bind,target=/mnt/build \
-   #     cd / && tar -xjvf /mnt/build/root_asdf.tbz2
-   ```
-
-2. **Start the container**:
+1. **Run the snapshot-builder service**:
 
    ```bash
    cd vite
-   docker-compose up -d
+   docker-compose run --rm snapshot-builder
    ```
 
-   This will take approximately 85 minutes.
+   This will:
+   - Build Python 3.13.11 and Node.js 24.13.0 from source (takes approximately 85 minutes)
+   - Create the `root_asdf.tbz2` snapshot file in the `vite/` directory
+   - Exit automatically when complete
 
-3. **Create the snapshot** using the `tar_snapshot.sh` script:
+2. **Verify the snapshot was created**:
 
    ```bash
-   # Get the container ID
-   docker ps | grep remy-vite
-
-   # Run the snapshot script
-   ./tar_snapshot.sh <container-id>
+   ls -lh vite/root_asdf.tbz2
    ```
 
-   This creates `root_asdf.tbz2` in the current directory.
+   You should see a file approximately 200-300 MB in size.
 
-4. **Restore the Dockerfile** to use the snapshot (revert your changes from step 1)
-
-5. **Rebuild** to verify the snapshot works:
+3. **Use the snapshot in subsequent builds**:
 
    ```bash
-   docker-compose down
-   docker-compose build
-   docker-compose up -d
+   docker-compose build remy-vite
    ```
 
-   This should complete in a few minutes instead of 85 minutes.
+   This should complete in a few minutes instead of 85 minutes, as it will restore from the snapshot.
+
+**Note**: The snapshot file (`vite/root_asdf.tbz2`) is excluded from version control via `.gitignore`. Team members should either:
+- Generate their own snapshot using the `snapshot-builder` service
+- Obtain the snapshot file from a shared location (e.g., cloud storage)
+
+**When to refresh the snapshot:**
+- After updating Python or Node.js versions in the Dockerfile
+- After adding new asdf plugins or tools
+- If you encounter issues with the existing snapshot
 
 ---
 
@@ -383,6 +406,33 @@ Open http://localhost:5000 in your browser (note: port 5000, not 3000).
 
 ## Troubleshooting
 
+### Out of Memory Errors During Snapshot Build
+
+**Problem**: `c++: fatal error: Killed signal terminated program cc1plus` or `cannot allocate memory` during `docker-compose run --rm snapshot-builder`
+
+**Cause**: Node.js compilation requires significant memory (especially for the V8 engine). Docker may not have enough memory allocated.
+
+**Solutions:**
+
+1. **Increase Docker Desktop memory allocation** (macOS/Windows):
+   - macOS: Docker Desktop → Preferences → Resources → Memory → Set to 16 GB minimum
+   - Windows: Docker Desktop → Settings → Resources → Memory → Set to 16 GB minimum
+   - Restart Docker Desktop after changing settings
+
+2. **For Linux with limited RAM**, the snapshot-builder is already configured with:
+   - 16 GB memory limit (`mem_limit: 16g`)
+   - 4 GB shared memory (`shm_size: '4gb'`)
+   - Single-threaded compilation (`MAKE_OPTS=-j1`) to minimize memory usage
+   
+   If you still encounter issues, ensure your system has adequate swap space configured.
+
+3. **Verify current Docker memory limit**:
+   ```bash
+   docker info | grep Memory
+   ```
+
+4. **Alternative: Use pre-built snapshot**: If memory constraints prevent building locally, obtain the `root_asdf.tbz2` file from a teammate or CI system that has sufficient resources.
+
 ### Port Conflicts
 
 **Problem**: `Error: Port 3000 is already in use` or `Port 5000 is already in use`
@@ -508,10 +558,18 @@ sudo usermod -aG docker $USER
 
 **Solution**: 
 
-Either:
-1. Obtain the `root_asdf.tbz2` snapshot file from another developer
-2. Create a new snapshot following the [Creating a Snapshot](#creating-a-snapshot) steps
-3. Or modify the Dockerfile to build from scratch (see [Initial Docker Build](#initial-docker-build))
+Generate the snapshot using the automated snapshot-builder service:
+
+```bash
+cd vite
+docker-compose run --rm snapshot-builder
+```
+
+This will take approximately 85 minutes but only needs to be done once (or when versions change).
+
+Alternatively, you can:
+1. Obtain the `root_asdf.tbz2` snapshot file from another developer or shared storage
+2. Place it in the `vite/` directory
 
 #### `404 Not Found` when accessing API
 
@@ -590,6 +648,9 @@ sudo sysctl -p
 ### Common Commands
 
 ```bash
+# Snapshot Management
+cd vite && docker-compose run --rm snapshot-builder  # Create/refresh snapshot (~85 min)
+
 # Development
 cd vite && ./vite_serve.sh                    # Start Vite dev server
 python -m remy.www --cache ~/notes --host 0.0.0.0  # Start Flask API

@@ -87,16 +87,8 @@ class NotecardCache(object):
             
             # Check if this is a pseudo-index (starts with @)
             if field_name_upper.startswith('@'):
-                # Try to create pseudo-index - will raise RemyError if unknown
-                try:
-                    indices[field_name_upper] = PseudoIndex(self, field_name_upper)
-                except RemyError:
-                    # Re-raise with available alternatives
-                    available_pseudo = ', '.join(sorted(PseudoIndex.KNOWN_PSEUDO_INDICES))
-                    raise RemyError(
-                        f"Unknown pseudo-index: {field_name_upper}. "
-                        f"Known pseudo-indices: {available_pseudo}"
-                    )
+                # Create pseudo-index - will raise RemyError if unknown
+                indices[field_name_upper] = PseudoIndex(self, field_name_upper)
             else:
                 # Regular field index - must exist in config
                 try:

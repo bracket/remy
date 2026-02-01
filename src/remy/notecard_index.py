@@ -130,6 +130,9 @@ class PseudoIndex(object):
     to actual notecard fields but provide useful synthetic views of the data.
     """
     
+    # Known pseudo-indices that can be synthesized
+    KNOWN_PSEUDO_INDICES = frozenset(['@ID', '@LABEL', '@PRIMARY-LABEL'])
+    
     def __init__(self, notecard_cache, field_name):
         """
         Initialize a pseudo-index.
@@ -137,9 +140,19 @@ class PseudoIndex(object):
         Args:
             notecard_cache: NotecardCache instance to access notecard data
             field_name: Name of the pseudo-index (e.g., '@ID')
+            
+        Raises:
+            RemyError: If field_name is not a known pseudo-index
         """
         self.notecard_cache = notecard_cache
         self.field_name = field_name.upper()
+        
+        # Validate that this is a known pseudo-index
+        if self.field_name not in self.KNOWN_PSEUDO_INDICES:
+            raise RemyError(
+                f"Unknown pseudo-index: {self.field_name}. "
+                f"Known pseudo-indices: {', '.join(sorted(self.KNOWN_PSEUDO_INDICES))}"
+            )
     
     @property
     def index(self):
@@ -168,10 +181,10 @@ class PseudoIndex(object):
                 key = (id(type(label)), label)
                 index.add((key, label))
         else:
-            # Unknown pseudo-index
+            # Unknown pseudo-index - this should never happen since __init__ validates
             raise RemyError(
                 f"Unknown pseudo-index: {self.field_name}. "
-                f"Known pseudo-indices: @id, @label, @primary-label"
+                f"Known pseudo-indices: {', '.join(sorted(self.KNOWN_PSEUDO_INDICES))}"
             )
         
         return index

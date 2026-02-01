@@ -478,13 +478,16 @@ def test_evaluate_no_matches():
 
 
 def test_evaluate_unknown_temporal_field():
-    """Test that querying unknown temporal field returns empty set."""
+    """Test that querying unknown temporal field raises RemyError."""
+    from remy.exceptions import RemyError
+    
     field_indices = {}
     
     ast = parse_query("unknown_date >= '2024-01-01'::date")
-    result = evaluate_query(ast, field_indices)
     
-    assert result == set()
+    # Should raise error for unknown field
+    with pytest.raises(RemyError, match="Unknown field identifier"):
+        evaluate_query(ast, field_indices)
 
 
 # ============================================================================

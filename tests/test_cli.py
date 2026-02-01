@@ -527,16 +527,17 @@ def test_query_parse_error():
 
 
 def test_query_unknown_field():
-    """Test that unknown fields return empty results."""
+    """Test that unknown fields raise an error."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "unknown_field = 'value'"])
 
-    # Should succeed but return no results
-    assert result.exit_code == 0
-    # Output should be empty (no notecards)
-    assert 'NOTECARD' not in result.output
+    # Should fail with non-zero exit code
+    assert result.exit_code != 0
+    # Output should contain error message about unknown field
+    assert 'Unknown field index: UNKNOWN_FIELD' in result.output
+    assert 'Available field indices:' in result.output
 
 
 def test_query_all_flag_still_works():

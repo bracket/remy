@@ -565,8 +565,17 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     # Pseudo-indices (@id, @primary-label, etc.) are now handled by field_indices
     # so they'll be in the dict if they were extracted
     if field_name not in field_indices:
-        # Field doesn't exist - return empty PairSet
-        return create_pairset()
+        # Field doesn't exist - raise error with helpful message
+        available_fields = sorted([k for k in field_indices.keys() if not k.startswith('@')])
+        available_pseudo = sorted([k for k in field_indices.keys() if k.startswith('@')])
+        
+        error_msg = f"Unknown field identifier: {field_name}. "
+        if available_fields:
+            error_msg += f"Available field indices: {', '.join(available_fields)}. "
+        if available_pseudo:
+            error_msg += f"Available pseudo-indices: {', '.join(available_pseudo)}"
+        
+        raise RemyError(error_msg.strip())
 
     index = field_indices[field_name]
 

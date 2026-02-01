@@ -4,7 +4,7 @@ import pytest
 
 from remy.exceptions import RemyError
 from remy.query.parser import parse_query
-from remy.query.eval import _resolve_macros
+from remy.query.eval import resolve_macros
 from remy.query.ast_nodes import (
     Literal, Identifier, Compare, And, Or,
     MacroDefinition, MacroReference, StatementList
@@ -82,7 +82,7 @@ def test_backward_compatibility():
 def test_resolve_zero_arity_macro():
     """Test resolving zero-arity macros."""
     ast = parse_query("@work := tags='work'; @work")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     # Should resolve to the macro body
     assert isinstance(resolved, Compare)
@@ -94,7 +94,7 @@ def test_resolve_parametric_macro():
     """Test resolving parametric macros with parameter substitution."""
     # Single parameter
     ast = parse_query("@filter(Field) := Field='value'; @filter(tags)")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     assert isinstance(resolved, Compare)
     assert resolved.left.name == 'tags'
@@ -102,7 +102,7 @@ def test_resolve_parametric_macro():
     
     # Multiple parameters
     ast = parse_query("@filter(Field, Value) := Field=Value; @filter(tags, 'work')")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     assert isinstance(resolved, Compare)
     assert resolved.left.name == 'tags'
@@ -113,7 +113,7 @@ def test_forward_reference():
     """Test that macros can be used before they're defined."""
     # @main uses @work, which is defined after @main
     ast = parse_query("@main := @work; @work := tags='work';")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     assert isinstance(resolved, Compare)
     assert resolved.left.name == 'tags'
@@ -127,7 +127,7 @@ def test_macro_in_complex_expression():
         @active := status='active';
         @work AND @active
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     assert isinstance(resolved, And)
     assert isinstance(resolved.left, Compare)
@@ -141,7 +141,7 @@ def test_nested_macro_references():
         @active_work := @work AND status='active';
         @active_work
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     assert isinstance(resolved, And)
 
@@ -151,17 +151,17 @@ def test_circular_dependency_detection():
     # Direct circular reference
     ast = parse_query("@a := @b; @b := @a; @a")
     with pytest.raises(RemyError, match="Circular macro dependency"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
     
     # Self-reference
     ast = parse_query("@work := @work; @work")
     with pytest.raises(RemyError, match="Circular macro dependency"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
     
     # Three-way circular reference
     ast = parse_query("@a := @b; @b := @c; @c := @a; @a")
     with pytest.raises(RemyError, match="Circular macro dependency"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
 
 
 def test_undefined_macro_error():
@@ -169,14 +169,14 @@ def test_undefined_macro_error():
     # A bare macro reference is treated as a potential pseudo-index
     # It won't raise an error during macro resolution - it's left as MacroReference
     ast = parse_query("@undefined")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     # It should remain as a MacroReference that will be treated as identifier during evaluation
     assert isinstance(resolved, MacroReference)
     assert resolved.name == 'undefined'
     
     # Undefined macro in a more complex expression is also left as-is
     ast = parse_query("@work := tags='work'; @work AND @undefined")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     # @work should be expanded, but @undefined should remain as MacroReference
     assert isinstance(resolved, And)
     # The right side should be a MacroReference
@@ -188,7 +188,7 @@ def test_duplicate_macro_definition():
     """Test that duplicate macro definitions are rejected."""
     ast = parse_query("@work := tags='work'; @work := status='active'; @work")
     with pytest.raises(RemyError, match="Duplicate macro definition"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
 
 
 def test_wrong_argument_count():
@@ -196,12 +196,12 @@ def test_wrong_argument_count():
     # Too few arguments
     ast = parse_query("@filter(Field, Value) := Field=Value; @filter(tags)")
     with pytest.raises(RemyError, match="expects 2 arguments"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
     
     # Too many arguments
     ast = parse_query("@filter(Field) := Field='value'; @filter(tags, 'extra')")
     with pytest.raises(RemyError, match="expects 1 argument"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
 
 
 def test_macro_with_function_call():
@@ -210,7 +210,7 @@ def test_macro_with_function_call():
         @work_blocks := union(tags='focus_block', tags='activation_block');
         @work_blocks
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     # Should resolve to FunctionCall node
     from remy.query.ast_nodes import FunctionCall
@@ -224,7 +224,7 @@ def test_parametric_macro_with_function():
         @project_work(ProjectName) := intersect_by_label(ProjectName, tags='work');
         @project_work(tags='alpha')
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     from remy.query.ast_nodes import FunctionCall
     assert isinstance(resolved, FunctionCall)
@@ -238,7 +238,7 @@ def test_macro_argument_is_expression():
         @filter(Condition) := Condition;
         @filter(tags='work' AND status='active')
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     assert isinstance(resolved, And)
 
@@ -247,13 +247,13 @@ def test_no_main_expression_error():
     """Test that queries with only macro definitions raise an error."""
     ast = parse_query("@work := tags='work';")
     with pytest.raises(RemyError, match="must have a @main macro"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
 
 
 def test_explicit_main_macro():
     """Test that @main can be explicitly defined."""
     ast = parse_query("@main := tags='work';")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     assert isinstance(resolved, Compare)
     assert resolved.left.name == 'tags'
     assert resolved.right.value == 'work'
@@ -265,7 +265,7 @@ def test_explicit_main_with_other_macros():
         @work := tags='work';
         @main := @work AND status='active';
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     assert isinstance(resolved, And)
 
 
@@ -273,21 +273,21 @@ def test_unnamed_statement_not_at_end_error():
     """Test that unnamed statements not at the end cause an error."""
     ast = parse_query("tags='work'; @other := status='active';")
     with pytest.raises(RemyError, match="Only the last statement can be unnamed"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
 
 
 def test_both_explicit_main_and_unnamed_final_error():
     """Test that having both explicit @main and unnamed final statement is an error."""
     ast = parse_query("@main := tags='work'; status='active'")
     with pytest.raises(RemyError, match="Cannot have both an explicit @main definition"):
-        _resolve_macros(ast)
+        resolve_macros(ast)
 
 
 def test_parameter_names_case_sensitive():
     """Test that parameter names are case-sensitive (PascalCase)."""
     # PascalCase parameter names should work
     ast = parse_query("@filter(FieldName, FieldValue) := FieldName=FieldValue; @filter(tags, 'work')")
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     assert isinstance(resolved, Compare)
 
 
@@ -297,7 +297,7 @@ def test_multiple_macro_uses():
         @work := tags='work';
         @work OR @work
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     assert isinstance(resolved, Or)
     assert isinstance(resolved.left, Compare)
@@ -308,11 +308,11 @@ def test_optional_final_semicolon():
     """Test that the final semicolon is optional."""
     # With final semicolon
     ast1 = parse_query("@work := tags='work'; @work;")
-    resolved1 = _resolve_macros(ast1)
+    resolved1 = resolve_macros(ast1)
     
     # Without final semicolon
     ast2 = parse_query("@work := tags='work'; @work")
-    resolved2 = _resolve_macros(ast2)
+    resolved2 = resolve_macros(ast2)
     
     # Both should resolve to the same thing
     assert type(resolved1) == type(resolved2)
@@ -346,7 +346,7 @@ def test_complex_nested_macros():
         @final := @filtered OR tags='urgent';
         @final
     """)
-    resolved = _resolve_macros(ast)
+    resolved = resolve_macros(ast)
     
     # Should be fully expanded
     assert isinstance(resolved, Or)

@@ -99,7 +99,7 @@ def test_macro_list_no_macros():
     runner = CliRunner()
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'macro', 'list'])
 
-    # Should exit cleanly with no output
+    # Should exit cleanly with no output (MACROS not defined triggers AttributeError)
     assert result.exit_code == 0
     assert result.output == ''
 
@@ -120,7 +120,6 @@ def test_macro_list_empty_macros_dict():
     """Test macro list when MACROS dict exists but is empty."""
     from remy.cli.__main__ import main
     import tempfile
-    import shutil
     
     # Create a temporary directory with empty MACROS
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -134,9 +133,42 @@ PARSER_BY_FIELD_NAME = {}
 MACROS = {}
 """)
         
+        # Create at least one notecard file so cache loads properly
+        (tmppath / 'test.ntc').touch()
+        
         runner = CliRunner()
         result = runner.invoke(main, ['--cache', str(tmppath), 'macro', 'list'])
         
         # Should exit cleanly with no output
         assert result.exit_code == 0
         assert result.output == ''
+
+
+def test_macro_list_invalid_macro_definition():
+    """Test macro list when MACROS contains invalid definition."""
+    from remy.cli.__main__ import main
+    import tempfile
+    
+    # Create a temporary directory with invalid MACROS
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        remy_dir = tmppath / '.remy'
+        remy_dir.mkdir()
+        
+        config_file = remy_dir / 'config.py'
+        config_file.write_text("""
+PARSER_BY_FIELD_NAME = {}
+MACROS = {
+    'INVALID': 'not a valid macro',
+}
+""")
+        
+        # Create at least one notecard file so cache loads properly
+        (tmppath / 'test.ntc').touch()
+        
+        runner = CliRunner()
+        result = runner.invoke(main, ['--cache', str(tmppath), 'macro', 'list'])
+        
+        # Should fail with parsing error
+        assert result.exit_code == 1
+        assert 'Error parsing config macros' in result.output

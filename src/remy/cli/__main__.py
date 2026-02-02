@@ -716,6 +716,191 @@ def _make_json_serializable(value):
         return str(value)
 
 
+@main.group()
+@click.pass_context
+def macro(ctx):
+    """Manage and inspect query macros."""
+    pass
+
+
+@macro.command('list')
+@click.option('--full', 'output_mode', flag_value='full',
+              help='Display macro definitions in @NAME := DEFINITION format')
+@click.option('--expand', 'output_mode', flag_value='expand',
+              help='Display expanded macro forms after AST substitution')
+@click.pass_context
+def macro_list(ctx, output_mode):
+    """List all configured macros from the config file.
+    
+    By default, displays macro names only, one per line.
+    Use --full to show full definitions or --expand to show expanded forms.
+    
+    Examples:
+      remy --cache /path/to/notes macro list
+      remy --cache /path/to/notes macro list --full
+      remy --cache /path/to/notes macro list --expand
+    """
+    from remy.query.eval import parse_config_macros, resolve_macros
+    from remy.query.parser import parse_query
+    from remy.exceptions import RemyError
+    
+    cache = ctx.obj['cache']
+    
+    if cache is None:
+        click.echo(
+            "Error: The --cache option is required for this command.",
+            err=True
+        )
+        sys.exit(1)
+    
+    # Load macros from config
+    try:
+        config_macros_dict = cache.config_module.MACROS
+    except AttributeError:
+        # MACROS not defined in config
+        config_macros_dict = {}
+    
+    if not config_macros_dict:
+        # No macros defined - exit silently with no output
+        return
+    
+    # Parse the config macros
+    try:
+        parsed_macros = parse_config_macros(config_macros_dict)
+    except RemyError as e:
+        click.echo(f"Error parsing config macros: {e}", err=True)
+        sys.exit(1)
+    
+    # Sort macro names alphabetically
+    macro_names = sorted(parsed_macros.keys())
+    
+    if not output_mode:
+        # Default mode: just print macro names with @ prefix
+        for name in macro_names:
+            print(f"@{name}")
+    
+    elif output_mode == 'full':
+        # Full mode: print @NAME := DEFINITION format
+        for name in macro_names:
+            # Get the original definition string from config
+            # Find the matching entry in the original config dict
+            original_def = None
+            for key, value in config_macros_dict.items():
+                # Parse this definition to check its name
+                try:
+                    temp_ast = parse_query(value)
+                    from remy.query.ast_nodes import StatementList, MacroDefinition
+                    if isinstance(temp_ast, StatementList) and len(temp_ast.statements) == 1:
+                        temp_def = temp_ast.statements[0]
+                    else:
+                        temp_def = temp_ast
+                    
+                    if isinstance(temp_def, MacroDefinition) and temp_def.name == name:
+                        original_def = value
+                        break
+                except:
+                    continue
+            
+            if original_def:
+                print(original_def)
+            else:
+                # Fallback: reconstruct from parsed macro
+                macro_def = parsed_macros[name]
+                body_str = _format_ast_node(macro_def.body)
+                if macro_def.parameters:
+                    params = ', '.join(macro_def.parameters)
+                    print(f"@{name}({params}) := {body_str}")
+                else:
+                    print(f"@{name} := {body_str}")
+    
+    elif output_mode == 'expand':
+        # Expand mode: parse and expand each macro using resolve_macros
+        for name in macro_names:
+            macro_def = parsed_macros[name]
+            
+            try:
+                # Create a macro reference to expand
+                from remy.query.ast_nodes import MacroReference
+                macro_ref = MacroReference(name, [])
+                
+                # Resolve the macro using all config macros
+                expanded = resolve_macros(macro_ref, parsed_macros)
+                
+                # Format the expanded AST
+                expanded_str = _format_ast_node(expanded)
+                print(f"@{name} := {expanded_str}")
+                
+            except RemyError as e:
+                click.echo(f"Error expanding macro @{name}: {e}", err=True)
+                sys.exit(1)
+
+
+def _format_ast_node(node):
+    """
+    Format an AST node as a string for display.
+    
+    Args:
+        node: AST node to format
+        
+    Returns:
+        String representation of the node
+    """
+    from remy.query.ast_nodes import (
+        Literal, Identifier, Compare, And, Or, Not, In,
+        BinaryOp, MacroReference
+    )
+    
+    if isinstance(node, Literal):
+        # Format literals with proper quoting
+        if isinstance(node.value, str):
+            return f'"{node.value}"'
+        else:
+            return str(node.value)
+    
+    elif isinstance(node, Identifier):
+        return node.name
+    
+    elif isinstance(node, Compare):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"{left}{node.operator}{right}"
+    
+    elif isinstance(node, And):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} AND {right})"
+    
+    elif isinstance(node, Or):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} OR {right})"
+    
+    elif isinstance(node, Not):
+        operand = _format_ast_node(node.operand)
+        return f"NOT {operand}"
+    
+    elif isinstance(node, In):
+        left = _format_ast_node(node.left)
+        values = ', '.join(_format_ast_node(v) for v in node.values)
+        return f"{left} IN ({values})"
+    
+    elif isinstance(node, BinaryOp):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} {node.operator} {right})"
+    
+    elif isinstance(node, MacroReference):
+        if node.arguments:
+            args = ', '.join(_format_ast_node(arg) for arg in node.arguments)
+            return f"@{node.name}({args})"
+        else:
+            return f"@{node.name}"
+    
+    else:
+        # Fallback for other node types
+        return str(node)
+
+
 @main.command()
 @click.option('-o', '--output', 'output_file', type=click.Path(), help='Output file path for completion script')
 @click.argument('output_path', required=False, type=click.Path())

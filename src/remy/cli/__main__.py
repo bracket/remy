@@ -798,7 +798,8 @@ def macro_list(ctx, output_mode):
                     if isinstance(temp_def, MacroDefinition) and temp_def.name == name:
                         original_def = value
                         break
-                except:
+                except Exception:
+                    # If parsing fails, skip this entry
                     continue
             
             if original_def:

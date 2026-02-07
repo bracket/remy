@@ -708,3 +708,289 @@ def test_difference_by_value_with_valueset():
     ast = parse_query("difference_by_value(union(tags='foo', tags='bar'), values(excluded='bar'))")
     result = evaluate_query(ast, field_indices)
     assert result == {'card1', 'card2'}
+
+
+# ============================================================================
+# Slice Operator Tests
+# ============================================================================
+
+def test_slice_by_label_basic_positive():
+    """Test slice_by_label with positive indices."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1', 'card2'},
+        'beta': {'card3'},
+        'gamma': {'card4', 'card5'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # tags index has pairs sorted by label:
+    # When sorted by label: card1, card2, card3, card4, card5
+    # slice_by_label(tags, 1, 3) should get cards at index 1 and 2 (card2, card3)
+    ast = parse_query("slice_by_label(tags, 1, 3)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card2', 'card3'}
+
+
+def test_slice_by_label_negative_indices():
+    """Test slice_by_label with negative indices."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'},
+        'beta': {'card2'},
+        'gamma': {'card3'},
+        'delta': {'card4'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # Get last 2 cards (indices -2 to end, which is -2 to 4)
+    # Sorted by label: card1, card2, card3, card4
+    # slice_by_label(tags, -2, 10) should get card3, card4
+    ast = parse_query("slice_by_label(tags, -2, 10)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}
+
+
+def test_slice_by_label_empty_slice():
+    """Test slice_by_label with invalid range (start >= end)."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'},
+        'beta': {'card2'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # slice_by_label(tags, 5, 2) should return empty set (start > end after normalization)
+    ast = parse_query("slice_by_label(tags, 5, 2)")
+    result = evaluate_query(ast, field_indices)
+    assert result == set()
+    
+    # slice_by_label(tags, 2, 2) should also return empty set (start == end)
+    ast2 = parse_query("slice_by_label(tags, 2, 2)")
+    result2 = evaluate_query(ast2, field_indices)
+    assert result2 == set()
+
+
+def test_slice_by_label_out_of_bounds():
+    """Test slice_by_label with out of bounds indices."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'},
+        'beta': {'card2'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # slice_by_label(tags, 0, 100) should get all cards (clamped to length)
+    ast = parse_query("slice_by_label(tags, 0, 100)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card2'}
+    
+    # slice_by_label(tags, -100, 1) should get first card (clamped to 0)
+    ast2 = parse_query("slice_by_label(tags, -100, 1)")
+    result2 = evaluate_query(ast2, field_indices)
+    assert result2 == {'card1'}
+
+
+def test_slice_by_value_basic_positive():
+    """Test slice_by_value with positive indices."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'}
+    })
+    
+    field_indices = {'PRIORITY': priority_index}
+    
+    # When sorted by value: (1, card1), (2, card2), (3, card3)
+    # slice_by_value(priority, 1, 3) should get cards at index 1 and 2
+    ast = parse_query("slice_by_value(priority, 1, 3)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card2', 'card3'}
+
+
+def test_slice_by_value_negative_indices():
+    """Test slice_by_value with negative indices."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'}
+    })
+    
+    field_indices = {'PRIORITY': priority_index}
+    
+    # Get last 2 cards (indices -2 to end)
+    # slice_by_value(priority, -2, 10) should get last 2 values
+    ast = parse_query("slice_by_value(priority, -2, 10)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}
+
+
+def test_slice_by_value_empty_slice():
+    """Test slice_by_value with invalid range."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'}
+    })
+    
+    field_indices = {'PRIORITY': priority_index}
+    
+    # slice_by_value(priority, 5, 2) should return empty set
+    ast = parse_query("slice_by_value(priority, 5, 2)")
+    result = evaluate_query(ast, field_indices)
+    assert result == set()
+
+
+def test_slice_by_label_from_basic():
+    """Test slice_by_label_from with positive index."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'},
+        'beta': {'card2'},
+        'gamma': {'card3'},
+        'delta': {'card4'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # slice_by_label_from(tags, 2) should get cards from index 2 to end
+    # Sorted by label: card1, card2, card3, card4
+    # From index 2: card3, card4
+    ast = parse_query("slice_by_label_from(tags, 2)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}
+
+
+def test_slice_by_label_from_negative():
+    """Test slice_by_label_from with negative index."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'},
+        'beta': {'card2'},
+        'gamma': {'card3'},
+        'delta': {'card4'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # slice_by_label_from(tags, -2) should get last 2 cards
+    ast = parse_query("slice_by_label_from(tags, -2)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}
+
+
+def test_slice_by_label_from_zero():
+    """Test slice_by_label_from with index 0 (all elements)."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'},
+        'beta': {'card2'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # slice_by_label_from(tags, 0) should get all cards
+    ast = parse_query("slice_by_label_from(tags, 0)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card2'}
+
+
+def test_slice_by_value_from_basic():
+    """Test slice_by_value_from with positive index."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'}
+    })
+    
+    field_indices = {'PRIORITY': priority_index}
+    
+    # slice_by_value_from(priority, 2) should get cards from index 2 to end
+    ast = parse_query("slice_by_value_from(priority, 2)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}
+
+
+def test_slice_by_value_from_negative():
+    """Test slice_by_value_from with negative index."""
+    priority_index = MockNotecardIndex('PRIORITY', {
+        1: {'card1'},
+        2: {'card2'},
+        3: {'card3'},
+        4: {'card4'}
+    })
+    
+    field_indices = {'PRIORITY': priority_index}
+    
+    # slice_by_value_from(priority, -2) should get last 2 cards
+    ast = parse_query("slice_by_value_from(priority, -2)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card3', 'card4'}
+
+
+def test_slice_operators_with_chaining():
+    """Test slice operators chained with other operators."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1', 'card2'},
+        'beta': {'card3'},
+        'gamma': {'card4', 'card5'}
+    })
+    status_index = MockNotecardIndex('STATUS', {
+        'active': {'card1', 'card3', 'card5'}
+    })
+    
+    field_indices = {'TAGS': tags_index, 'STATUS': status_index}
+    
+    # Get first 3 cards by label, then filter by status
+    # slice_by_label(tags, 0, 3) = {card1, card2, card3}
+    # intersect_by_label(..., status='active') keeps only {card1, card3}
+    ast = parse_query("intersect_by_label(slice_by_label(tags, 0, 3), status='active')")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card1', 'card3'}
+
+
+def test_slice_by_label_single_element():
+    """Test slicing to get a single element."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'},
+        'beta': {'card2'},
+        'gamma': {'card3'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # slice_by_label(tags, 1, 2) should get only card2
+    ast = parse_query("slice_by_label(tags, 1, 2)")
+    result = evaluate_query(ast, field_indices)
+    assert result == {'card2'}
+
+
+def test_slice_non_pairset_error():
+    """Test that slice operators reject non-PairSet arguments."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # Try to slice a LabelSet
+    with pytest.raises(RemyError, match="argument must be a PairSet"):
+        ast = parse_query("slice_by_label(labels(tags), 0, 1)")
+        evaluate_query(ast, field_indices)
+
+
+def test_slice_wrong_argument_count():
+    """Test that slice operators check argument counts."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'alpha': {'card1'}
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # slice_by_label expects 3 arguments
+    with pytest.raises(RemyError, match="slice_by_label expects 3 arguments"):
+        ast = parse_query("slice_by_label(tags, 0)")
+        evaluate_query(ast, field_indices)
+    
+    # slice_by_label_from expects 2 arguments
+    with pytest.raises(RemyError, match="slice_by_label_from expects 2 arguments"):
+        ast = parse_query("slice_by_label_from(tags)")
+        evaluate_query(ast, field_indices)

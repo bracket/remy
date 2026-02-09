@@ -224,7 +224,7 @@ def format_pairset(pairset, limit=None, reverse=False):
     from io import StringIO
     
     output = StringIO()
-    writer = csv.writer(output)
+    writer = csv.writer(output, lineterminator='\n')
     
     # PairSet is already sorted by ((type_id, value), label)
     # Iterate in order or reversed

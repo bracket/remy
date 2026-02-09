@@ -205,6 +205,106 @@ def format_notecards_fields_json(cards, field_names, cache):
     return result
 
 
+def format_pairset(pairset, limit=None, reverse=False):
+    """
+    Format a PairSet as CSV with label,value columns.
+    
+    PairSet is internally stored as ((type_id, value), label) tuples sorted by value,
+    but we output as label,value for readability.
+    
+    Args:
+        pairset: SortedSet of ((type_id, value), label) tuples
+        limit: Optional maximum number of rows to output
+        reverse: If True, reverse the iteration order
+        
+    Returns:
+        String with CSV-formatted output (no header row)
+    """
+    import csv
+    from io import StringIO
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # PairSet is already sorted by ((type_id, value), label)
+    # Iterate in order or reversed
+    items = reversed(pairset) if reverse else iter(pairset)
+    
+    count = 0
+    for typed_value, label in items:
+        # Extract the actual value (remove type_id prefix)
+        _, value = typed_value
+        
+        # Convert value to string (handle dates, timestamps, etc.)
+        value_str = str(make_json_serializable(value))
+        
+        # Write as label,value (reversed from internal storage)
+        writer.writerow([label, value_str])
+        
+        count += 1
+        if limit is not None and count >= limit:
+            break
+    
+    return output.getvalue()
+
+
+def format_labelset(labelset, limit=None, reverse=False):
+    """
+    Format a LabelSet as one label per line.
+    
+    Args:
+        labelset: Set of label strings
+        limit: Optional maximum number of labels to output
+        reverse: If True, reverse the sort order
+        
+    Returns:
+        String with one label per line
+    """
+    # Sort for deterministic output
+    sorted_labels = sorted(labelset, reverse=reverse)
+    
+    # Apply limit if specified
+    if limit is not None:
+        sorted_labels = sorted_labels[:limit]
+    
+    return '\n'.join(sorted_labels) + ('\n' if sorted_labels else '')
+
+
+def format_valueset(valueset, limit=None, reverse=False):
+    """
+    Format a ValueSet as one value per line.
+    
+    ValueSet already maintains type-aware sorted order internally.
+    
+    Args:
+        valueset: ValueSet instance
+        limit: Optional maximum number of values to output
+        reverse: If True, reverse the iteration order
+        
+    Returns:
+        String with one value per line
+    """
+    # ValueSet already has type-aware ordering
+    # Convert to list to allow reversing and limiting
+    values = list(valueset)
+    
+    if reverse:
+        values = reversed(values)
+    
+    # Convert values to strings and apply limit
+    lines = []
+    count = 0
+    for value in values:
+        value_str = str(make_json_serializable(value))
+        lines.append(value_str)
+        
+        count += 1
+        if limit is not None and count >= limit:
+            break
+    
+    return '\n'.join(lines) + ('\n' if lines else '')
+
+
 def get_sort_key_for_card(card, cache, order_by_key):
     """
     Build a sort key for a notecard.
@@ -320,6 +420,62 @@ def execute_query_filter(cache, query_string):
     return unique_cards
 
 
+def execute_query_raw(cache, query_string):
+    """
+    Execute a query and return the raw set result (PairSet, LabelSet, or ValueSet).
+    
+    This function evaluates the query and returns the raw result without projecting
+    to notecards, which is useful for set-based output formats.
+    
+    Args:
+        cache: NotecardCache instance
+        query_string: Query expression string to parse and evaluate
+    
+    Returns:
+        EvalResult (Union[PairSet, LabelSet, ValueSet]) - the raw set result
+    
+    Raises:
+        RemyError: If query parsing or evaluation fails
+    """
+    from remy.query.parser import parse_query
+    from remy.query.eval import _evaluate, resolve_macros, parse_config_macros
+    from remy.query.util import extract_field_names
+    from remy.exceptions import RemyError
+    
+    # Parse the query into an AST
+    ast = parse_query(query_string)
+    
+    # Load config macros if available
+    config_macros = None
+    try:
+        config_module = cache.config_module
+        if hasattr(config_module, 'MACROS'):
+            # Parse config macro strings into MacroDefinition nodes
+            config_macros = parse_config_macros(config_module.MACROS)
+    except RemyError as e:
+        # Config file not found - this is okay for the query command
+        # Macros are optional
+        if "Configuration file not found" in str(e):
+            pass
+        else:
+            # Other RemyErrors (e.g., macro parsing errors) should propagate
+            raise
+    
+    # Resolve macros before field extraction
+    ast = resolve_macros(ast, config_macros)
+    
+    # Extract field names from the fully expanded AST
+    field_names = extract_field_names(ast)
+    
+    # Build field indices dictionary
+    field_indices = cache.field_indices(field_names)
+    
+    # Evaluate the query and return raw set result
+    result = _evaluate(ast, field_indices)
+    
+    return result
+
+
 @click.group()
 @click.option('--cache', envvar='REMY_CACHE', help='Location of Remy notecard cache.')
 @click.pass_context
@@ -352,7 +508,7 @@ def main(ctx, cache):
 @click.option('--where', 'where_clause', help='Query expression (alternative to positional argument)')
 @click.option('--all', 'show_all', is_flag=True, help='Return all notecards')
 @click.option('--format', 'output_format',
-              type=click.Choice(['raw', 'json'], case_sensitive=False),
+              type=click.Choice(['raw', 'json', 'set'], case_sensitive=False),
               default='raw',
               help='Output format (default: raw)')
 @click.option('--pretty-print', 'pretty_print', is_flag=True,
@@ -374,6 +530,11 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
     Use --reverse to reverse the sort order. Use --limit to restrict the number
     of results returned.
 
+    The --format option controls output format:
+      - raw: Full notecard format with NOTECARD lines and content (default)
+      - json: JSON array of notecard texts
+      - set: Raw set output (PairSet as CSV, LabelSet/ValueSet as lines)
+
     Examples:
       remy --cache /path/to/notes query --all
       remy --cache /path/to/notes query "tag = 'inbox'"
@@ -381,12 +542,21 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
       remy --cache /path/to/notes query --all --order-by priority
       remy --cache /path/to/notes query --all --order-by created --reverse
       remy --cache /path/to/notes query --all --order-by created --limit 1
+      remy --cache /path/to/notes query "priority > 5" --format set --limit 10
+      remy --cache /path/to/notes query "values(tag)" --format set
     """
     cache = ctx.obj.get('cache')
     
     if cache is None:
         raise click.UsageError("The --cache option is required for this command.")
 
+    # Validate incompatible option combinations for --format set
+    if output_format.lower() == 'set':
+        if fields_option:
+            raise click.UsageError("--fields option is not compatible with --format set")
+        if order_by_key != 'id':
+            raise click.UsageError("--order-by option is not compatible with --format set (sets have inherent ordering)")
+    
     # Validate input: must have either query_expr, where_clause, or --all
     if not query_expr and not where_clause and not show_all:
         raise click.UsageError(
@@ -400,6 +570,51 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
     # Get the query expression (prefer positional over --where)
     final_query = query_expr or where_clause
 
+    # Handle --format set differently - it operates on raw sets
+    if output_format.lower() == 'set':
+        if show_all:
+            # For --all with --format set, we need to create a query that returns all labels
+            # We'll use the @id pseudo-index which returns all primary labels
+            final_query = '@id'
+        
+        if not final_query:
+            # This shouldn't happen due to earlier validation
+            raise click.UsageError("Query expression required for --format set")
+        
+        # Execute query and get raw set result
+        from remy.exceptions import RemyError
+        from remy.query.set_types import ValueSet
+        from sortedcontainers import SortedSet
+        
+        try:
+            raw_result = execute_query_raw(cache, final_query)
+            
+            # Format based on set type
+            if isinstance(raw_result, set):
+                # LabelSet
+                output = format_labelset(raw_result, limit=limit, reverse=reverse_order)
+            elif isinstance(raw_result, SortedSet):
+                # PairSet
+                output = format_pairset(raw_result, limit=limit, reverse=reverse_order)
+            elif isinstance(raw_result, ValueSet):
+                # ValueSet
+                output = format_valueset(raw_result, limit=limit, reverse=reverse_order)
+            else:
+                raise click.UsageError(f"Unexpected set type: {type(raw_result).__name__}")
+            
+            print(output, end='')
+            return
+            
+        except RemyError as e:
+            # Parse or evaluation error - print message and exit
+            click.echo(f"Error: {str(e)}", err=True)
+            sys.exit(1)
+        except Exception as e:
+            # Unexpected error - print message and exit
+            click.echo(f"Unexpected error: {str(e)}", err=True)
+            sys.exit(1)
+    
+    # Standard notecard-based output (raw or json format)
     # Determine which notecards to return
     if show_all:
         # Return all notecards when --all flag is used

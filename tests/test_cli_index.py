@@ -685,3 +685,185 @@ def test_index_dump_case_insensitive_format():
         # Should parse as valid JSON
         data = json.loads(result.output)
         assert isinstance(data, list)
+
+
+# Tests for 'remy index validate' command
+
+
+def test_index_validate_help():
+    """Test that index validate --help shows options."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'validate', '--help'])
+
+    assert result.exit_code == 0
+    assert 'validate' in result.output.lower()
+    assert '--format' in result.output
+    assert '--show-uri' in result.output
+    assert '--show-line' in result.output
+
+
+def test_index_validate_no_errors():
+    """Test validate command with valid data (no errors)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'validate', 'PRIORITY'])
+
+    assert result.exit_code == 0
+    assert result.output == ''
+
+
+def test_index_validate_with_errors_raw():
+    """Test validate command with malformed data in raw format."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY'])
+
+    assert result.exit_code == 1
+    assert 'invalid1' in result.output
+    assert 'invalid2' in result.output
+    assert 'ValueError' in result.output
+    assert 'not-a-number' in result.output
+    assert 'also-bad' in result.output
+
+
+def test_index_validate_with_errors_show_uri():
+    """Test validate command with --show-uri flag."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--show-uri'])
+
+    assert result.exit_code == 1
+    assert 'invalid1' in result.output
+    assert 'URL(' in result.output
+    assert 'test_notes_malformed/notes' in result.output
+
+
+def test_index_validate_with_errors_show_line():
+    """Test validate command with --show-line flag."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--show-line'])
+
+    assert result.exit_code == 1
+    assert 'invalid1' in result.output
+    assert 'URL(' in result.output
+    assert 'PRIORITY:not-a-number' in result.output
+    assert 'PRIORITY:also-bad' in result.output
+
+
+def test_index_validate_json_format():
+    """Test validate command with JSON format."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--format', 'json'])
+
+    assert result.exit_code == 1
+    
+    # Parse JSON output
+    data = json.loads(result.output)
+    
+    assert isinstance(data, list)
+    assert len(data) == 2
+    
+    # Check structure of first error
+    error = data[0]
+    assert 'label' in error
+    assert error['label'] in ['invalid1', 'invalid2']
+    assert 'error_type' in error
+    assert error['error_type'] == 'ValueError'
+    assert 'error_message' in error
+    
+    # Should not have uri by default
+    assert 'uri' not in error
+
+
+def test_index_validate_json_with_uri():
+    """Test validate command with JSON format and --show-uri."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--format', 'json', '--show-uri'])
+
+    assert result.exit_code == 1
+    
+    # Parse JSON output
+    data = json.loads(result.output)
+    
+    assert isinstance(data, list)
+    assert len(data) == 2
+    
+    # Should have uri when --show-uri is used
+    error = data[0]
+    assert 'uri' in error
+    assert 'test_notes_malformed' in error['uri']
+
+
+def test_index_validate_json_with_line():
+    """Test validate command with JSON format and --show-line."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--format', 'json', '--show-line'])
+
+    assert result.exit_code == 1
+    
+    # Parse JSON output
+    data = json.loads(result.output)
+    
+    assert isinstance(data, list)
+    assert len(data) == 2
+    
+    # Should have uri, field_name, and field_value when --show-line is used
+    error = data[0]
+    assert 'uri' in error
+    assert 'field_name' in error
+    assert error['field_name'] == 'PRIORITY'
+    assert 'field_value' in error
+    assert error['field_value'] in ['not-a-number', 'also-bad']
+
+
+def test_index_validate_nonexistent_field():
+    """Test validate command with non-existent field index."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'validate', 'NONEXISTENT'])
+
+    assert result.exit_code == 1
+    assert 'Error' in result.output
+    assert 'not found' in result.output
+    assert 'NONEXISTENT' in result.output
+
+
+def test_index_validate_case_insensitive():
+    """Test that validate command is case-insensitive for field names."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    
+    # Test with lowercase
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'validate', 'priority'])
+    assert result.exit_code == 0
+    
+    # Test with mixed case
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'validate', 'Priority'])
+    assert result.exit_code == 0
+
+
+def test_index_help_shows_validate():
+    """Test that index --help shows the validate command."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', '--help'])
+
+    assert result.exit_code == 0
+    assert 'validate' in result.output
+

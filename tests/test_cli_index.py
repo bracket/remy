@@ -72,13 +72,13 @@ def test_index_list_json_format():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list', '--format', 'json'])
 
     assert result.exit_code == 0
-    
+
     # Parse JSON output
     data = json.loads(result.output)
-    
+
     # Should be a list
     assert isinstance(data, list)
-    
+
     # Should contain expected field names
     assert 'TAG' in data
     assert 'TAGS' in data
@@ -92,23 +92,23 @@ def test_index_list_json_pretty_print():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Get compact output
     result_compact = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list', '--format', 'json'])
-    
+
     # Get pretty-printed output
     result_pretty = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list', '--format', 'json', '--pretty-print'])
-    
+
     assert result_compact.exit_code == 0
     assert result_pretty.exit_code == 0
-    
+
     # Both should parse as valid JSON
     data_compact = json.loads(result_compact.output)
     data_pretty = json.loads(result_pretty.output)
-    
+
     # Should contain same data
     assert data_compact == data_pretty
-    
+
     # Pretty output should have more lines
     compact_lines = result_compact.output.count('\n')
     pretty_lines = result_pretty.output.count('\n')
@@ -124,7 +124,7 @@ def test_index_list_sorted():
 
     assert result.exit_code == 0
     lines = result.output.strip().split('\n')
-    
+
     # Should be sorted alphabetically
     assert lines == sorted(lines)
 
@@ -152,11 +152,11 @@ def test_index_dump_default():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG'])
 
     assert result.exit_code == 0
-    
+
     # Should output label,value pairs
     lines = result.output.strip().split('\n')
     assert len(lines) == 5  # 5 notecards with TAG field
-    
+
     # Check format
     assert 'task5,archive' in lines
     assert 'task3,done' in lines
@@ -173,17 +173,17 @@ def test_index_dump_labels_only():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--labels'])
 
     assert result.exit_code == 0
-    
+
     lines = result.output.strip().split('\n')
     assert len(lines) == 5
-    
+
     # Should only contain labels
     assert 'task1' in lines
     assert 'task2' in lines
     assert 'task3' in lines
     assert 'task4' in lines
     assert 'task5' in lines
-    
+
     # Should not contain values
     assert 'inbox' not in lines
     assert 'done' not in lines
@@ -197,16 +197,16 @@ def test_index_dump_values_only():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--values'])
 
     assert result.exit_code == 0
-    
+
     lines = result.output.strip().split('\n')
     assert len(lines) == 5
-    
+
     # Should contain values
     assert 'inbox' in lines
     assert 'done' in lines
     assert 'archive' in lines
     assert 'urgent' in lines
-    
+
     # Count 'inbox' occurrences (should be 2)
     assert lines.count('inbox') == 2
 
@@ -219,12 +219,12 @@ def test_index_dump_unique_flag():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--values', '--unique'])
 
     assert result.exit_code == 0
-    
+
     lines = result.output.strip().split('\n')
-    
+
     # Should have 4 unique values (archive, done, inbox, urgent)
     assert len(lines) == 4
-    
+
     # Should contain each value only once
     assert lines.count('inbox') == 1
     assert 'archive' in lines
@@ -240,7 +240,7 @@ def test_index_dump_delimiter_tab():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '-d', 'tab'])
 
     assert result.exit_code == 0
-    
+
     # Should contain tab-separated values
     assert '\t' in result.output
     assert 'task1\tinbox' in result.output
@@ -254,7 +254,7 @@ def test_index_dump_delimiter_pipe():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '-d', 'pipe'])
 
     assert result.exit_code == 0
-    
+
     # Should contain pipe-separated values
     assert '|' in result.output
     assert 'task1|inbox' in result.output
@@ -265,17 +265,17 @@ def test_index_dump_delimiter_literal():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Test with literal comma
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '-d', ','])
     assert result.exit_code == 0
     assert 'task1,inbox' in result.output
-    
+
     # Test with literal tab
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '-d', '\t'])
     assert result.exit_code == 0
     assert '\t' in result.output
-    
+
     # Test with literal pipe
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '-d', '|'])
     assert result.exit_code == 0
@@ -287,14 +287,14 @@ def test_index_dump_delimiter_escaping():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Create a test notecard cache with special characters
     with runner.isolated_filesystem():
         test_dir = Path('test_escape')
         test_dir.mkdir()
         config_dir = test_dir / '.remy'
         config_dir.mkdir()
-        
+
         # Create config file
         config_file = config_dir / 'config.py'
         config_file.write_text('''
@@ -305,7 +305,7 @@ PARSER_BY_FIELD_NAME = {
     'TAG': simple_parser,
 }
 ''')
-        
+
         # Create notecard file with values containing commas
         test_file = test_dir / 'test.ntc'
         test_file.write_text('''NOTECARD test1
@@ -316,10 +316,10 @@ NOTECARD test2
 :TAG: normal
 Content
 ''')
-        
+
         result = runner.invoke(main, ['--cache', str(test_dir), 'index', 'dump', 'TAG', '-d', 'comma'])
         assert result.exit_code == 0
-        
+
         # Value with commas should be quoted
         assert '"value,with,commas"' in result.output
         # Normal value should not be quoted
@@ -334,14 +334,14 @@ def test_index_dump_json_format():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--format', 'json'])
 
     assert result.exit_code == 0
-    
+
     # Parse JSON output
     data = json.loads(result.output)
-    
+
     # Should be a list of lists (pairs)
     assert isinstance(data, list)
     assert len(data) == 5
-    
+
     # Each item should be a list with 2 elements
     for item in data:
         assert isinstance(item, list)
@@ -353,23 +353,23 @@ def test_index_dump_json_pretty_print():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Get compact output
     result_compact = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--format', 'json'])
-    
+
     # Get pretty-printed output
     result_pretty = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--format', 'json', '--pretty-print'])
-    
+
     assert result_compact.exit_code == 0
     assert result_pretty.exit_code == 0
-    
+
     # Both should parse as valid JSON
     data_compact = json.loads(result_compact.output)
     data_pretty = json.loads(result_pretty.output)
-    
+
     # Should contain same data
     assert data_compact == data_pretty
-    
+
     # Pretty output should have more lines
     compact_lines = result_compact.output.count('\n')
     pretty_lines = result_pretty.output.count('\n')
@@ -384,18 +384,18 @@ def test_index_dump_json_labels_only():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--format', 'json', '--labels'])
 
     assert result.exit_code == 0
-    
+
     # Parse JSON output
     data = json.loads(result.output)
-    
+
     # Should be a list of strings
     assert isinstance(data, list)
     assert len(data) == 5
-    
+
     # Each item should be a string
     for item in data:
         assert isinstance(item, str)
-    
+
     # Should contain labels
     assert 'task1' in data
     assert 'task2' in data
@@ -409,14 +409,14 @@ def test_index_dump_json_values_only():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--format', 'json', '--values'])
 
     assert result.exit_code == 0
-    
+
     # Parse JSON output
     data = json.loads(result.output)
-    
+
     # Should be a list
     assert isinstance(data, list)
     assert len(data) == 5
-    
+
     # Should contain values
     assert 'inbox' in data
     assert 'done' in data
@@ -455,9 +455,9 @@ def test_index_dump_sorted_output():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--values'])
 
     assert result.exit_code == 0
-    
+
     lines = result.output.strip().split('\n')
-    
+
     # Values should be sorted: archive, done, inbox, inbox, urgent
     assert lines[0] == 'archive'
     assert lines[1] == 'done'
@@ -474,12 +474,12 @@ def test_index_dump_priority_numeric_values():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'PRIORITY', '--values'])
 
     assert result.exit_code == 0
-    
+
     lines = result.output.strip().split('\n')
-    
+
     # Should have 5 values
     assert len(lines) == 5
-    
+
     # Values should be sorted numerically (as strings)
     assert '1' in lines
     assert '2' in lines
@@ -533,14 +533,14 @@ def test_index_list_include_all_fields():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Create a test notecard cache with fields that don't have parsers
     with runner.isolated_filesystem():
         test_dir = Path('test_unparsed')
         test_dir.mkdir()
         config_dir = test_dir / '.remy'
         config_dir.mkdir()
-        
+
         # Create config file with only some parsers
         config_file = config_dir / 'config.py'
         config_file.write_text('''
@@ -551,7 +551,7 @@ PARSER_BY_FIELD_NAME = {
     'TAG': simple_parser,
 }
 ''')
-        
+
         # Create notecard file with multiple fields
         test_file = test_dir / 'test.ntc'
         test_file.write_text('''NOTECARD test1
@@ -565,13 +565,13 @@ NOTECARD test2
 :PRIORITY: high
 Content
 ''')
-        
+
         # Test without --include-all-fields (should only show TAG)
         result = runner.invoke(main, ['--cache', str(test_dir), 'index', 'list'])
         assert result.exit_code == 0
         lines = result.output.strip().split('\n')
         assert lines == ['TAG']
-        
+
         # Test with --include-all-fields (should show all fields)
         result = runner.invoke(main, ['--cache', str(test_dir), 'index', 'list', '--include-all-fields'])
         assert result.exit_code == 0
@@ -588,14 +588,14 @@ def test_index_list_include_all_fields_json():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Create a test notecard cache with fields that don't have parsers
     with runner.isolated_filesystem():
         test_dir = Path('test_unparsed')
         test_dir.mkdir()
         config_dir = test_dir / '.remy'
         config_dir.mkdir()
-        
+
         # Create config file with only TAG parser
         config_file = config_dir / 'config.py'
         config_file.write_text('''
@@ -606,7 +606,7 @@ PARSER_BY_FIELD_NAME = {
     'TAG': simple_parser,
 }
 ''')
-        
+
         # Create notecard file with multiple fields
         test_file = test_dir / 'test.ntc'
         test_file.write_text('''NOTECARD test1
@@ -614,11 +614,11 @@ PARSER_BY_FIELD_NAME = {
 :CUSTOM_FIELD: custom_value
 Content
 ''')
-        
+
         # Test with --include-all-fields and JSON format
         result = runner.invoke(main, ['--cache', str(test_dir), 'index', 'list', '--include-all-fields', '--format', 'json'])
         assert result.exit_code == 0
-        
+
         data = json.loads(result.output)
         assert isinstance(data, list)
         assert 'TAG' in data
@@ -631,14 +631,14 @@ def test_index_list_include_all_fields_no_extra_fields():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Test with the existing test_notes data where all used fields have parsers
     result_without = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list'])
     result_with = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'list', '--include-all-fields'])
-    
+
     assert result_without.exit_code == 0
     assert result_with.exit_code == 0
-    
+
     # Should produce the same output
     assert result_without.output == result_with.output
 
@@ -663,9 +663,9 @@ def test_index_dump_unique_with_full_mode():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--unique'])
 
     assert result.exit_code == 0
-    
+
     lines = result.output.strip().split('\n')
-    
+
     # Should still have 5 entries since all (label, value) pairs are unique
     assert len(lines) == 5
 
@@ -675,13 +675,13 @@ def test_index_dump_case_insensitive_format():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Test various case combinations
     for format_str in ['json', 'JSON', 'Json']:
         result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'dump', 'TAG', '--format', format_str])
-        
+
         assert result.exit_code == 0
-        
+
         # Should parse as valid JSON
         data = json.loads(result.output)
         assert isinstance(data, list)
@@ -765,13 +765,13 @@ def test_index_validate_json_format():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--format', 'json'])
 
     assert result.exit_code == 1
-    
+
     # Parse JSON output
     data = json.loads(result.output)
-    
+
     assert isinstance(data, list)
     assert len(data) == 2
-    
+
     # Check structure of first error
     error = data[0]
     assert 'label' in error
@@ -779,7 +779,7 @@ def test_index_validate_json_format():
     assert 'error_type' in error
     assert error['error_type'] == 'ValueError'
     assert 'error_message' in error
-    
+
     # Should not have uri by default
     assert 'uri' not in error
 
@@ -792,13 +792,13 @@ def test_index_validate_json_with_uri():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--format', 'json', '--show-uri'])
 
     assert result.exit_code == 1
-    
+
     # Parse JSON output
     data = json.loads(result.output)
-    
+
     assert isinstance(data, list)
     assert len(data) == 2
-    
+
     # Should have uri when --show-uri is used
     error = data[0]
     assert 'uri' in error
@@ -813,13 +813,13 @@ def test_index_validate_json_with_line():
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes_malformed'), 'index', 'validate', 'PRIORITY', '--format', 'json', '--show-line'])
 
     assert result.exit_code == 1
-    
+
     # Parse JSON output
     data = json.loads(result.output)
-    
+
     assert isinstance(data, list)
     assert len(data) == 2
-    
+
     # Should have uri, field_name, and field_value when --show-line is used
     error = data[0]
     assert 'uri' in error
@@ -847,11 +847,11 @@ def test_index_validate_case_insensitive():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    
+
     # Test with lowercase
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'validate', 'priority'])
     assert result.exit_code == 0
-    
+
     # Test with mixed case
     result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'index', 'validate', 'Priority'])
     assert result.exit_code == 0

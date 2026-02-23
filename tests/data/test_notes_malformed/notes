@@ -1,0 +1,11 @@
+NOTECARD valid1
+:PRIORITY: 1
+Valid priority
+
+NOTECARD invalid1
+:PRIORITY: not-a-number
+Invalid priority
+
+NOTECARD invalid2
+:PRIORITY: also-bad
+Another invalid priority

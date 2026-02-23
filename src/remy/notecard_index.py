@@ -41,9 +41,20 @@ class NotecardIndex(object):
                 if node.label.upper() != name:
                     continue
 
-                for key in self.field_parser(node.value):
-                    key = (id(type(key)), key)
-                    index.add((key, label))
+                try:
+                    for key in self.field_parser(node.value):
+                        key = (id(type(key)), key)
+                        index.add((key, label))
+                except Exception as e:
+                    # Print error to stderr and continue processing other cards
+                    error_msg = (
+                        f"Warning: Failed to parse field '{self.field_name}' "
+                        f"in notecard '{card.primary_label}' "
+                        f"(source: {card.source_url}): "
+                        f"{type(e).__name__}: {e}\n"
+                    )
+                    sys.stderr.write(error_msg)
+                    continue
 
         self.__index = index
 

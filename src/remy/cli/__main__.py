@@ -931,6 +931,127 @@ def _make_json_serializable(value):
         return str(value)
 
 
+@index.command('validate')
+@click.argument('index_name')
+@click.option('--format', 'output_format',
+              type=click.Choice(['raw', 'json'], case_sensitive=False),
+              default='raw',
+              help='Output format (default: raw)')
+@click.option('--show-uri', 'show_uri', is_flag=True,
+              help='Include source URI in output')
+@click.option('--show-line', 'show_line', is_flag=True,
+              help='Include source URI, field name, and field value in output')
+@click.pass_context
+def index_validate(ctx, index_name, output_format, show_uri, show_line):
+    """Validate field parsing for a specific field index.
+    
+    Checks all notecards for parsing errors in the specified field.
+    Returns exit code 0 if no errors found, 1 if errors exist.
+    
+    Examples:
+      remy --cache /path/to/notes index validate PRIORITY
+      remy --cache /path/to/notes index validate PRIORITY --show-uri
+      remy --cache /path/to/notes index validate PRIORITY --show-line
+      remy --cache /path/to/notes index validate PRIORITY --format json
+    """
+    from remy.ast.parse import parse_content
+    from remy.ast import Field
+    
+    cache = ctx.obj['cache']
+    
+    # Get the field parser from config
+    try:
+        field_parser = cache.config_module.PARSER_BY_FIELD_NAME[index_name.upper()]
+    except KeyError:
+        click.echo(
+            f"Error: Field index '{index_name}' not found in configuration.\n"
+            f"Please check your '.remy/config.py' file and ensure '{index_name}' "
+            f"is defined in PARSER_BY_FIELD_NAME.",
+            err=True
+        )
+        sys.exit(1)
+    except AttributeError:
+        click.echo(
+            "Error: Configuration file missing or PARSER_BY_FIELD_NAME not defined.\n"
+            "Please check your '.remy/config.py' file.",
+            err=True
+        )
+        sys.exit(1)
+    
+    # Collect all parsing errors
+    errors = []
+    field_name_upper = index_name.upper()
+    
+    # Iterate through all cards (checking only primary labels)
+    for label, card in cache.cards_by_label.items():
+        if label != card.primary_label:
+            continue
+        
+        # Parse content to find matching fields
+        for node in parse_content(card.content):
+            if not isinstance(node, Field):
+                continue
+            
+            if node.label.upper() != field_name_upper:
+                continue
+            
+            # Try to parse the field value
+            try:
+                _ = list(field_parser(node.value))
+            except Exception as e:
+                error_info = {
+                    'label': card.primary_label,
+                    'uri': str(card.source_url) if card.source_url else None,
+                    'field_name': node.label,
+                    'field_value': node.value,
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)
+                }
+                errors.append(error_info)
+    
+    # Output results
+    if output_format.lower() == 'json':
+        # Build JSON output with conditional fields
+        json_errors = []
+        for error in errors:
+            json_error = {
+                'label': error['label'],
+                'error_type': error['error_type'],
+                'error_message': error['error_message']
+            }
+            
+            if show_uri or show_line:
+                if error['uri']:
+                    json_error['uri'] = error['uri']
+            
+            if show_line:
+                json_error['field_name'] = error['field_name']
+                json_error['field_value'] = error['field_value']
+            
+            json_errors.append(json_error)
+        
+        output = json.dumps(json_errors, ensure_ascii=False, indent=2)
+        print(output)
+    else:  # raw format
+        for error in errors:
+            parts = [error['label']]
+            
+            if show_uri or show_line:
+                if error['uri']:
+                    parts.append(error['uri'])
+            
+            if show_line:
+                parts.append(f"{error['field_name']}:{error['field_value']}")
+            
+            parts.append(f"{error['error_type']}: {error['error_message']}")
+            
+            print(' - '.join(parts))
+    
+    # Exit with appropriate code
+    if errors:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 @main.group()
 @click.pass_context
 def macro(ctx):

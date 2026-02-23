@@ -138,14 +138,15 @@ def test_evaluate_equality_no_matches():
 
 
 def test_evaluate_unknown_field():
-    """Test that unknown field names return empty set."""
+    """Test that unknown field names raise RemyError."""
     field_indices = {}
 
     # Query: unknown_field = 'value'
     ast = Compare('=', Identifier('unknown_field'), Literal('value'))
-    result = evaluate_query(ast, field_indices)
-
-    assert result == set()
+    
+    # Should raise error for unknown field
+    with pytest.raises(RemyError, match="Unknown field identifier"):
+        evaluate_query(ast, field_indices)
 
 
 def test_evaluate_field_name_case_insensitive():
@@ -428,7 +429,7 @@ def test_evaluate_empty_and():
 
 
 def test_evaluate_empty_or():
-    """Test OR with both sides returning empty sets."""
+    """Test OR with unknown fields raises RemyError."""
     field_indices = {}
 
     # Query: field1 = 'value1' OR field2 = 'value2' (both fields don't exist)
@@ -436,10 +437,10 @@ def test_evaluate_empty_or():
         Compare('=', Identifier('field1'), Literal('value1')),
         Compare('=', Identifier('field2'), Literal('value2'))
     )
-    result = evaluate_query(ast, field_indices)
-
-    # Empty union
-    assert result == set()
+    
+    # Should raise error for unknown field
+    with pytest.raises(RemyError, match="Unknown field identifier"):
+        evaluate_query(ast, field_indices)
 
 
 def test_evaluate_string_types():
@@ -797,14 +798,15 @@ def test_evaluate_complex_query_with_inequalities():
 
 
 def test_evaluate_inequality_unknown_field():
-    """Test that inequality on unknown field returns empty set."""
+    """Test that inequality on unknown field raises RemyError."""
     field_indices = {}
 
     # Query: unknown_field > 5
     ast = Compare('>', Identifier('unknown_field'), Literal(5))
-    result = evaluate_query(ast, field_indices)
-
-    assert result == set()
+    
+    # Should raise error for unknown field
+    with pytest.raises(RemyError, match="Unknown field identifier"):
+        evaluate_query(ast, field_indices)
 
 
 def test_evaluate_inequality_value_not_in_index():
@@ -861,3 +863,31 @@ def test_evaluate_all_operators_together():
     assert evaluate_query(Compare('<=', Identifier('value'), Literal(30)), field_indices) == {'card1', 'card2', 'card3'}
     assert evaluate_query(Compare('>', Identifier('value'), Literal(30)), field_indices) == {'card4', 'card5'}
     assert evaluate_query(Compare('>=', Identifier('value'), Literal(30)), field_indices) == {'card3', 'card4', 'card5'}
+
+
+def test_evaluate_identifier_not_in_field_indices_error():
+    """Test that using an identifier not in field_indices raises RemyError."""
+    status_index = MockNotecardIndex('STATUS', {
+        'active': {'card1'},
+    })
+    
+    field_indices = {'STATUS': status_index}
+    
+    # Query references UNKNOWN field
+    ast = Compare('=', Identifier('UNKNOWN'), Literal('value'))
+    with pytest.raises(RemyError, match="Unknown field identifier: UNKNOWN"):
+        evaluate_query(ast, field_indices)
+
+
+def test_evaluate_bare_identifier_typo_error():
+    """Test that a typo in a bare identifier raises RemyError."""
+    tags_index = MockNotecardIndex('TAGS', {
+        'foo': {'card1'},
+    })
+    
+    field_indices = {'TAGS': tags_index}
+    
+    # Query with typo: TAG instead of TAGS
+    ast = Identifier('TAG')
+    with pytest.raises(RemyError, match="does not reference a known field index"):
+        evaluate_query(ast, field_indices)

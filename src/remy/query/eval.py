@@ -127,19 +127,22 @@ def parse_config_macros(config_macros_dict: Dict[str, str]) -> Dict[str, MacroDe
     return parsed_macros
 
 
-def _resolve_macros(ast: ASTNode, config_macros: Dict[str, MacroDefinition] = None) -> ASTNode:
+def resolve_macros(ast: ASTNode, config_macros: Dict[str, MacroDefinition] = None) -> ASTNode:
     """
-    Resolve macro definitions and references in a StatementList AST.
+    Resolve macro definitions and expand all macro references.
+    
+    This should be called before field extraction to ensure all macros are expanded.
+    Any unresolved MacroReference nodes after this are treated as pseudo-indices.
     
     This function processes a StatementList containing macro definitions and expressions,
     resolves all macro references, and returns the final @main expression AST.
     
     Args:
-        ast: Either a StatementList with macro definitions or a plain expression AST
+        ast: The parsed query AST node (may contain macro definitions)
         config_macros: Optional dictionary of macro definitions from config (name -> MacroDefinition)
         
     Returns:
-        The resolved @main expression AST with all macros expanded
+        The fully expanded AST with all macros resolved to @main
         
     Raises:
         RemyError: If there are circular macro dependencies or undefined macros
@@ -348,25 +351,6 @@ def _substitute_params(node: ASTNode, param_map: Dict[str, ASTNode], depth: int 
         # Leaf nodes - return as-is
         return node
 
-
-def resolve_macros(ast: ASTNode, config_macros: Dict[str, MacroDefinition] = None) -> ASTNode:
-    """
-    Resolve macro definitions and expand all macro references.
-    
-    This should be called before field extraction to ensure all macros are expanded.
-    Any unresolved MacroReference nodes after this are treated as pseudo-indices.
-    
-    Args:
-        ast: The parsed query AST node (may contain macro definitions)
-        config_macros: Optional dictionary of macro definitions from config (name -> MacroDefinition)
-        
-    Returns:
-        The fully expanded AST with all macros resolved to @main
-        
-    Raises:
-        RemyError: If there are circular macro dependencies or undefined macros
-    """
-    return _resolve_macros(ast, config_macros)
 
 
 def evaluate_query(ast: ASTNode, field_indices: Dict[str, 'NotecardIndex']) -> Set[str]:
@@ -581,8 +565,17 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     # Pseudo-indices (@id, @primary-label, etc.) are now handled by field_indices
     # so they'll be in the dict if they were extracted
     if field_name not in field_indices:
-        # Field doesn't exist - return empty PairSet
-        return create_pairset()
+        # Field doesn't exist - raise error with helpful message
+        available_fields = sorted([k for k in field_indices.keys() if not k.startswith('@')])
+        available_pseudo = sorted([k for k in field_indices.keys() if k.startswith('@')])
+        
+        error_msg = f"Unknown field identifier: {field_name}. "
+        if available_fields:
+            error_msg += f"Available field indices: {', '.join(available_fields)}. "
+        if available_pseudo:
+            error_msg += f"Available pseudo-indices: {', '.join(available_pseudo)}"
+        
+        raise RemyError(error_msg.strip())
 
     index = field_indices[field_name]
 

@@ -109,7 +109,8 @@ def test_macro_list_no_cache():
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ['macro', 'list'])
+    # Explicitly unset REMY_CACHE environment variable (in case it's set in user's shell)
+    result = runner.invoke(main, ['macro', 'list'], env={'REMY_CACHE': ''})
 
     # Should fail with error message (UsageError returns exit code 2)
     assert result.exit_code != 0

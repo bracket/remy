@@ -1713,3 +1713,197 @@ Test card
         
         assert result.exit_code == 0
         assert 'card1,2024-01-15T14:30:45,2024-01-20' in result.output
+
+
+def test_query_format_set_help():
+    """Test that --help shows the 'set' format option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--help'])
+
+    assert result.exit_code == 0
+    assert '--format [raw|json|set]' in result.output
+    assert 'set: Raw set output' in result.output
+
+
+def test_query_format_set_labelset():
+    """Test --format set with LabelSet output (using labels() function)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "labels(tag = 'inbox')", '--format', 'set'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should have 2 labels
+    assert len(lines) == 2
+    # LabelSet should be sorted
+    assert lines == ['task1', 'task2']
+
+
+def test_query_format_set_pairset():
+    """Test --format set with PairSet output (CSV format)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--format', 'set'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should have 2 pairs
+    assert len(lines) == 2
+    # PairSet should be in CSV format: label,value
+    assert 'task1,inbox' in lines
+    assert 'task2,inbox' in lines
+
+
+def test_query_format_set_valueset():
+    """Test --format set with ValueSet output (using values() function)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "values(tag = 'inbox')", '--format', 'set'])
+
+    assert result.exit_code == 0
+    # Should have only one unique value
+    assert result.output.strip() == 'inbox'
+
+
+def test_query_format_set_valueset_numeric():
+    """Test --format set with numeric ValueSet (type-aware sorting)."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "values(priority)", '--format', 'set'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should have 3 unique priority values, sorted
+    assert len(lines) == 3
+    assert lines == ['1', '2', '3']
+
+
+def test_query_format_set_with_limit():
+    """Test --format set with --limit option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "labels(@id)", '--format', 'set', '--limit', '3'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should have only 3 results
+    assert len(lines) == 3
+
+
+def test_query_format_set_with_reverse():
+    """Test --format set with --reverse option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "values(priority)", '--format', 'set', '--reverse'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should be in reverse order
+    assert len(lines) == 3
+    assert lines == ['3', '2', '1']
+
+
+def test_query_format_set_pairset_with_limit():
+    """Test --format set with PairSet and --limit option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "priority > 1", '--format', 'set', '--limit', '2'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should have only 2 results
+    assert len(lines) == 2
+    # First two pairs should be sorted by value (2 comes before 3)
+    assert 'task3,2' in lines
+    assert 'task1,3' in lines or 'task4,3' in lines
+
+
+def test_query_format_set_pairset_with_reverse():
+    """Test --format set with PairSet and --reverse option."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "priority > 0", '--format', 'set', '--reverse', '--limit', '1'])
+
+    assert result.exit_code == 0
+    # With reverse, should get the highest priority value first
+    # Priority values are 1, 2, 3, so reversed should give us 3 first
+    lines = result.output.strip().split('\n')
+    assert len(lines) == 1
+    # Should be one of the cards with priority 3
+    assert ',3' in lines[0]
+
+
+def test_query_format_set_error_with_fields():
+    """Test that --format set with --fields produces an error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--format', 'set', '--fields', 'tag'])
+
+    assert result.exit_code != 0
+    assert '--fields option is not compatible with --format set' in result.output
+
+
+def test_query_format_set_error_with_order_by():
+    """Test that --format set with --order-by produces an error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--format', 'set', '--order-by', 'priority'])
+
+    assert result.exit_code != 0
+    assert '--order-by option is not compatible with --format set' in result.output
+
+
+def test_query_format_set_all_flag():
+    """Test --format set with --all flag."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--format', 'set', '--limit', '3'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    # Should have 3 results (CSV format with label,value where value is the label itself for @id pseudo-index)
+    assert len(lines) == 3
+    # Each line should be label,label for @id pseudo-index
+    for line in lines:
+        parts = line.split(',')
+        assert len(parts) == 2
+        assert parts[0] == parts[1]
+
+
+def test_query_format_set_case_insensitive():
+    """Test that --format set is case-insensitive."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "labels(tag = 'inbox')", '--format', 'SET'])
+
+    assert result.exit_code == 0
+    lines = result.output.strip().split('\n')
+    assert len(lines) == 2
+    assert 'task1' in lines
+    assert 'task2' in lines
+
+
+def test_query_format_set_empty_result():
+    """Test --format set with no results."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'nonexistent'", '--format', 'set'])
+
+    assert result.exit_code == 0
+    # Should output nothing for empty set
+    assert result.output == ''

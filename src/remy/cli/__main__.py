@@ -205,6 +205,106 @@ def format_notecards_fields_json(cards, field_names, cache):
     return result
 
 
+def format_pairset(pairset, limit=None, reverse=False):
+    """
+    Format a PairSet as CSV with label,value columns.
+    
+    PairSet is internally stored as ((type_id, value), label) tuples sorted by value,
+    but we output as label,value for readability.
+    
+    Args:
+        pairset: SortedSet of ((type_id, value), label) tuples
+        limit: Optional maximum number of rows to output
+        reverse: If True, reverse the iteration order
+        
+    Returns:
+        String with CSV-formatted output (no header row)
+    """
+    import csv
+    from io import StringIO
+    
+    output = StringIO()
+    writer = csv.writer(output, lineterminator='\n')
+    
+    # PairSet is already sorted by ((type_id, value), label)
+    # Iterate in order or reversed
+    items = reversed(pairset) if reverse else iter(pairset)
+    
+    count = 0
+    for typed_value, label in items:
+        # Extract the actual value (remove type_id prefix)
+        _, value = typed_value
+        
+        # Convert value to string (handle dates, timestamps, etc.)
+        value_str = str(make_json_serializable(value))
+        
+        # Write as label,value (reversed from internal storage)
+        writer.writerow([label, value_str])
+        
+        count += 1
+        if limit is not None and count >= limit:
+            break
+    
+    return output.getvalue()
+
+
+def format_labelset(labelset, limit=None, reverse=False):
+    """
+    Format a LabelSet as one label per line.
+    
+    Args:
+        labelset: Set of label strings
+        limit: Optional maximum number of labels to output
+        reverse: If True, reverse the sort order
+        
+    Returns:
+        String with one label per line
+    """
+    # Sort for deterministic output
+    sorted_labels = sorted(labelset, reverse=reverse)
+    
+    # Apply limit if specified
+    if limit is not None:
+        sorted_labels = sorted_labels[:limit]
+    
+    return '\n'.join(sorted_labels) + ('\n' if sorted_labels else '')
+
+
+def format_valueset(valueset, limit=None, reverse=False):
+    """
+    Format a ValueSet as one value per line.
+    
+    ValueSet already maintains type-aware sorted order internally.
+    
+    Args:
+        valueset: ValueSet instance
+        limit: Optional maximum number of values to output
+        reverse: If True, reverse the iteration order
+        
+    Returns:
+        String with one value per line
+    """
+    # ValueSet already has type-aware ordering
+    # Convert to list to allow reversing and limiting
+    values = list(valueset)
+    
+    if reverse:
+        values = reversed(values)
+    
+    # Convert values to strings and apply limit
+    lines = []
+    count = 0
+    for value in values:
+        value_str = str(make_json_serializable(value))
+        lines.append(value_str)
+        
+        count += 1
+        if limit is not None and count >= limit:
+            break
+    
+    return '\n'.join(lines) + ('\n' if lines else '')
+
+
 def get_sort_key_for_card(card, cache, order_by_key):
     """
     Build a sort key for a notecard.
@@ -320,6 +420,62 @@ def execute_query_filter(cache, query_string):
     return unique_cards
 
 
+def execute_query_raw(cache, query_string):
+    """
+    Execute a query and return the raw set result (PairSet, LabelSet, or ValueSet).
+    
+    This function evaluates the query and returns the raw result without projecting
+    to notecards, which is useful for set-based output formats.
+    
+    Args:
+        cache: NotecardCache instance
+        query_string: Query expression string to parse and evaluate
+    
+    Returns:
+        EvalResult (Union[PairSet, LabelSet, ValueSet]) - the raw set result
+    
+    Raises:
+        RemyError: If query parsing or evaluation fails
+    """
+    from remy.query.parser import parse_query
+    from remy.query.eval import _evaluate, resolve_macros, parse_config_macros
+    from remy.query.util import extract_field_names
+    from remy.exceptions import RemyError
+    
+    # Parse the query into an AST
+    ast = parse_query(query_string)
+    
+    # Load config macros if available
+    config_macros = None
+    try:
+        config_module = cache.config_module
+        if hasattr(config_module, 'MACROS'):
+            # Parse config macro strings into MacroDefinition nodes
+            config_macros = parse_config_macros(config_module.MACROS)
+    except RemyError as e:
+        # Config file not found - this is okay for the query command
+        # Macros are optional
+        if "Configuration file not found" in str(e):
+            pass
+        else:
+            # Other RemyErrors (e.g., macro parsing errors) should propagate
+            raise
+    
+    # Resolve macros before field extraction
+    ast = resolve_macros(ast, config_macros)
+    
+    # Extract field names from the fully expanded AST
+    field_names = extract_field_names(ast)
+    
+    # Build field indices dictionary
+    field_indices = cache.field_indices(field_names)
+    
+    # Evaluate the query and return raw set result
+    result = _evaluate(ast, field_indices)
+    
+    return result
+
+
 @click.group()
 @click.option('--cache', envvar='REMY_CACHE', help='Location of Remy notecard cache.')
 @click.pass_context
@@ -352,7 +508,7 @@ def main(ctx, cache):
 @click.option('--where', 'where_clause', help='Query expression (alternative to positional argument)')
 @click.option('--all', 'show_all', is_flag=True, help='Return all notecards')
 @click.option('--format', 'output_format',
-              type=click.Choice(['raw', 'json'], case_sensitive=False),
+              type=click.Choice(['raw', 'json', 'set'], case_sensitive=False),
               default='raw',
               help='Output format (default: raw)')
 @click.option('--pretty-print', 'pretty_print', is_flag=True,
@@ -374,6 +530,11 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
     Use --reverse to reverse the sort order. Use --limit to restrict the number
     of results returned.
 
+    The --format option controls output format:
+      - raw: Full notecard format with NOTECARD lines and content (default)
+      - json: JSON array of notecard texts
+      - set: Raw set output (PairSet as CSV, LabelSet/ValueSet as lines)
+
     Examples:
       remy --cache /path/to/notes query --all
       remy --cache /path/to/notes query "tag = 'inbox'"
@@ -381,12 +542,21 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
       remy --cache /path/to/notes query --all --order-by priority
       remy --cache /path/to/notes query --all --order-by created --reverse
       remy --cache /path/to/notes query --all --order-by created --limit 1
+      remy --cache /path/to/notes query "priority > 5" --format set --limit 10
+      remy --cache /path/to/notes query "values(tag)" --format set
     """
     cache = ctx.obj.get('cache')
     
     if cache is None:
         raise click.UsageError("The --cache option is required for this command.")
 
+    # Validate incompatible option combinations for --format set
+    if output_format.lower() == 'set':
+        if fields_option:
+            raise click.UsageError("--fields option is not compatible with --format set")
+        if order_by_key != 'id':
+            raise click.UsageError("--order-by option is not compatible with --format set (sets have inherent ordering)")
+    
     # Validate input: must have either query_expr, where_clause, or --all
     if not query_expr and not where_clause and not show_all:
         raise click.UsageError(
@@ -400,6 +570,51 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
     # Get the query expression (prefer positional over --where)
     final_query = query_expr or where_clause
 
+    # Handle --format set differently - it operates on raw sets
+    if output_format.lower() == 'set':
+        if show_all:
+            # For --all with --format set, we need to create a query that returns all labels
+            # We'll use the @id pseudo-index which returns all primary labels
+            final_query = '@id'
+        
+        if not final_query:
+            # This shouldn't happen due to earlier validation
+            raise click.UsageError("Query expression required for --format set")
+        
+        # Execute query and get raw set result
+        from remy.exceptions import RemyError
+        from remy.query.set_types import ValueSet
+        from sortedcontainers import SortedSet
+        
+        try:
+            raw_result = execute_query_raw(cache, final_query)
+            
+            # Format based on set type
+            if isinstance(raw_result, set):
+                # LabelSet
+                output = format_labelset(raw_result, limit=limit, reverse=reverse_order)
+            elif isinstance(raw_result, SortedSet):
+                # PairSet
+                output = format_pairset(raw_result, limit=limit, reverse=reverse_order)
+            elif isinstance(raw_result, ValueSet):
+                # ValueSet
+                output = format_valueset(raw_result, limit=limit, reverse=reverse_order)
+            else:
+                raise click.UsageError(f"Unexpected set type: {type(raw_result).__name__}")
+            
+            print(output, end='')
+            return
+            
+        except RemyError as e:
+            # Parse or evaluation error - print message and exit
+            click.echo(f"Error: {str(e)}", err=True)
+            sys.exit(1)
+        except Exception as e:
+            # Unexpected error - print message and exit
+            click.echo(f"Unexpected error: {str(e)}", err=True)
+            sys.exit(1)
+    
+    # Standard notecard-based output (raw or json format)
     # Determine which notecards to return
     if show_all:
         # Return all notecards when --all flag is used
@@ -837,6 +1052,305 @@ def index_validate(ctx, index_name, output_format, show_uri, show_line):
         sys.exit(1)
     else:
         sys.exit(0)
+@main.group()
+@click.pass_context
+def macro(ctx):
+    """Manage and inspect query macros."""
+    pass
+
+
+@macro.command('list')
+@click.argument('macro_name', required=False)
+@click.option('--full', 'output_mode', flag_value='full',
+              help='Display macro definitions in @NAME := DEFINITION format')
+@click.option('--expand', 'output_mode', flag_value='expand',
+              help='Display expanded macro forms after AST substitution')
+@click.pass_context
+def macro_list(ctx, macro_name, output_mode):
+    """List configured macros from the config file.
+    
+    By default, displays macro names only, one per line.
+    If MACRO_NAME is provided, displays only that macro.
+    Use --full to show full definitions or --expand to show expanded forms.
+    
+    Examples:
+      remy --cache /path/to/notes macro list
+      remy --cache /path/to/notes macro list work
+      remy --cache /path/to/notes macro list --full
+      remy --cache /path/to/notes macro list work --expand
+    """
+    from remy.query.eval import parse_config_macros, resolve_macros
+    from remy.query.parser import parse_query
+    from remy.exceptions import RemyError
+    
+    cache = ctx.obj['cache']
+    
+    if cache is None:
+        raise click.UsageError("The --cache option is required for this command.")
+    
+    # Load macros from config
+    try:
+        config_macros_dict = cache.config_module.MACROS
+    except AttributeError:
+        # MACROS not defined in config
+        config_macros_dict = {}
+    
+    if not config_macros_dict:
+        # No macros defined - exit silently with no output
+        return
+    
+    # Parse the config macros
+    try:
+        parsed_macros = parse_config_macros(config_macros_dict)
+    except RemyError as e:
+        raise click.ClickException(f"Error parsing config macros: {e}")
+    
+    # Filter to specific macro if requested
+    if macro_name:
+        # Remove @ prefix if provided
+        if macro_name.startswith('@'):
+            macro_name = macro_name[1:]
+        
+        if macro_name not in parsed_macros:
+            raise click.ClickException(f"Macro '@{macro_name}' not found in config")
+        
+        macro_names = [macro_name]
+    else:
+        # Sort macro names alphabetically
+        macro_names = sorted(parsed_macros.keys())
+    
+    if not output_mode:
+        # Default mode: just print macro names with @ prefix
+        for name in macro_names:
+            print(f"@{name}")
+    
+    elif output_mode == 'full':
+        # Full mode: print @NAME := DEFINITION format
+        for name in macro_names:
+            # Get the original definition string from config
+            # Find the matching entry in the original config dict
+            original_def = None
+            for key, value in config_macros_dict.items():
+                # Parse this definition to check its name
+                try:
+                    temp_ast = parse_query(value)
+                    from remy.query.ast_nodes import StatementList, MacroDefinition
+                    if isinstance(temp_ast, StatementList) and len(temp_ast.statements) == 1:
+                        temp_def = temp_ast.statements[0]
+                    else:
+                        temp_def = temp_ast
+                    
+                    if isinstance(temp_def, MacroDefinition) and temp_def.name == name:
+                        original_def = value
+                        break
+                except Exception:
+                    # If parsing fails, skip this entry
+                    continue
+            
+            if original_def:
+                print(original_def)
+            else:
+                # Fallback: reconstruct from parsed macro
+                macro_def = parsed_macros[name]
+                body_str = _format_ast_node(macro_def.body)
+                if macro_def.parameters:
+                    params = ', '.join(macro_def.parameters)
+                    print(f"@{name}({params}) := {body_str}")
+                else:
+                    print(f"@{name} := {body_str}")
+    
+    elif output_mode == 'expand':
+        # Expand mode: expand the macro body while keeping parameters
+        for name in macro_names:
+            macro_def = parsed_macros[name]
+            
+            try:
+                # For parametric macros, we need to expand the body while keeping parameters
+                # For zero-arity macros, we can expand completely
+                if macro_def.parameters:
+                    # Expand the body with all config macros available
+                    expanded_body = _expand_macro_body(macro_def.body, parsed_macros)
+                    body_str = _format_ast_node(expanded_body)
+                    params = ', '.join(macro_def.parameters)
+                    print(f"@{name}({params}) := {body_str}")
+                else:
+                    # Zero-arity macro: create a reference and expand fully
+                    from remy.query.ast_nodes import MacroReference
+                    macro_ref = MacroReference(name, [])
+                    expanded = resolve_macros(macro_ref, parsed_macros)
+                    expanded_str = _format_ast_node(expanded)
+                    print(f"@{name} := {expanded_str}")
+                
+            except RemyError as e:
+                raise click.ClickException(f"Error expanding macro @{name}: {e}")
+
+
+def _expand_macro_body(body: 'ASTNode', config_macros: dict) -> 'ASTNode':
+    """
+    Expand macro references in a macro body while preserving parameter references.
+    
+    This function recursively expands any MacroReference nodes that refer to
+    config macros, but leaves Identifier nodes (which could be parameters) unchanged.
+    
+    Args:
+        body: The AST node representing the macro body
+        config_macros: Dictionary of parsed macro definitions
+        
+    Returns:
+        Expanded AST node with config macros resolved
+    """
+    from remy.query.ast_nodes import (
+        MacroReference, Compare, And, Or, Not, In, BinaryOp, 
+        FunctionCall, Identifier, Literal
+    )
+    from remy.query.eval import resolve_macros
+    
+    if isinstance(body, MacroReference):
+        # If this references a config macro, expand it
+        if body.name in config_macros:
+            # For zero-arity references, expand fully
+            if not body.arguments:
+                return resolve_macros(body, config_macros)
+            else:
+                # For parametric references, expand arguments first
+                expanded_args = [_expand_macro_body(arg, config_macros) for arg in body.arguments]
+                # Then try to expand the reference itself if possible
+                ref_with_expanded_args = MacroReference(body.name, expanded_args)
+                try:
+                    return resolve_macros(ref_with_expanded_args, config_macros)
+                except:
+                    # If expansion fails, return with expanded arguments
+                    return ref_with_expanded_args
+        else:
+            # Unknown macro reference, keep as-is but expand arguments
+            expanded_args = [_expand_macro_body(arg, config_macros) for arg in body.arguments]
+            return MacroReference(body.name, expanded_args)
+    
+    elif isinstance(body, Compare):
+        return Compare(
+            body.operator,
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, And):
+        return And(
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, Or):
+        return Or(
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, Not):
+        return Not(_expand_macro_body(body.operand, config_macros))
+    
+    elif isinstance(body, In):
+        return In(
+            _expand_macro_body(body.left, config_macros),
+            [_expand_macro_body(v, config_macros) for v in body.values]
+        )
+    
+    elif isinstance(body, BinaryOp):
+        return BinaryOp(
+            body.operator,
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, FunctionCall):
+        return FunctionCall(
+            body.function_name,
+            [_expand_macro_body(arg, config_macros) for arg in body.arguments]
+        )
+    
+    else:
+        # For Identifier, Literal, and other leaf nodes, return as-is
+        return body
+
+
+def _format_ast_node(node):
+    """
+    Format an AST node as a string for display.
+    
+    Args:
+        node: AST node to format
+        
+    Returns:
+        String representation of the node
+    """
+    from remy.query.ast_nodes import (
+        Literal, Identifier, Compare, And, Or, Not, In,
+        BinaryOp, MacroReference, FunctionCall,
+        DateTimeLiteral, DateLiteral, TimedeltaLiteral
+    )
+    
+    if isinstance(node, Literal):
+        # Format literals with proper quoting
+        if isinstance(node.value, str):
+            return f'"{node.value}"'
+        else:
+            return str(node.value)
+    
+    elif isinstance(node, DateTimeLiteral):
+        return f'"{node.value.isoformat()}"::timestamp'
+    
+    elif isinstance(node, DateLiteral):
+        return f'"{node.value.isoformat()}"::date'
+    
+    elif isinstance(node, TimedeltaLiteral):
+        # Format as "N unit" (e.g., "24 hours")
+        return f'"{node.value.value} {node.value.unit}"::timedelta'
+    
+    elif isinstance(node, Identifier):
+        return node.name
+    
+    elif isinstance(node, Compare):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"{left}{node.operator}{right}"
+    
+    elif isinstance(node, And):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} AND {right})"
+    
+    elif isinstance(node, Or):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} OR {right})"
+    
+    elif isinstance(node, Not):
+        operand = _format_ast_node(node.operand)
+        return f"NOT {operand}"
+    
+    elif isinstance(node, In):
+        left = _format_ast_node(node.left)
+        values = ', '.join(_format_ast_node(v) for v in node.values)
+        return f"{left} IN ({values})"
+    
+    elif isinstance(node, BinaryOp):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} {node.operator} {right})"
+    
+    elif isinstance(node, MacroReference):
+        if node.arguments:
+            args = ', '.join(_format_ast_node(arg) for arg in node.arguments)
+            return f"@{node.name}({args})"
+        else:
+            return f"@{node.name}"
+    
+    elif isinstance(node, FunctionCall):
+        args = ', '.join(_format_ast_node(arg) for arg in node.arguments)
+        return f"{node.function_name}({args})"
+    
+    else:
+        # Fallback for other node types
+        return str(node)
 
 
 @main.command()

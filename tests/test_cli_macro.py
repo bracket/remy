@@ -111,9 +111,9 @@ def test_macro_list_no_cache():
     runner = CliRunner()
     result = runner.invoke(main, ['macro', 'list'])
 
-    # Should fail with error message
-    assert result.exit_code == 1
-    assert 'Error: The --cache option is required' in result.output
+    # Should fail with error message (UsageError returns exit code 2)
+    assert result.exit_code != 0
+    assert 'cache option is required' in result.output.lower()
 
 
 def test_macro_list_empty_macros_dict():
@@ -169,6 +169,58 @@ MACROS = {
         runner = CliRunner()
         result = runner.invoke(main, ['--cache', str(tmppath), 'macro', 'list'])
         
-        # Should fail with parsing error
+        # Should fail with parsing error (ClickException returns exit code 1)
         assert result.exit_code == 1
-        assert 'Error parsing config macros' in result.output
+        assert 'parsing config macros' in result.output.lower()
+
+
+def test_macro_list_single_macro():
+    """Test macro list with a specific macro name."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_macros'), 'macro', 'list', 'work'])
+
+    assert result.exit_code == 0
+    # Should only show the work macro
+    lines = result.output.strip().split('\n')
+    assert len(lines) == 1
+    assert lines[0] == '@work'
+
+
+def test_macro_list_single_macro_with_at():
+    """Test macro list with @ prefix in macro name."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_macros'), 'macro', 'list', '@work'])
+
+    assert result.exit_code == 0
+    # Should only show the work macro
+    lines = result.output.strip().split('\n')
+    assert len(lines) == 1
+    assert lines[0] == '@work'
+
+
+def test_macro_list_single_macro_full():
+    """Test macro list with a specific macro name and --full."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_macros'), 'macro', 'list', 'work', '--full'])
+
+    assert result.exit_code == 0
+    output = result.output.strip()
+    assert output == '@work := tags="work"'
+
+
+def test_macro_list_nonexistent_macro():
+    """Test macro list with a nonexistent macro name."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_macros'), 'macro', 'list', 'nonexistent'])
+
+    # Should fail with error message
+    assert result.exit_code == 1
+    assert 'not found' in result.output.lower()

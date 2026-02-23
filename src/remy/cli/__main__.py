@@ -716,6 +716,307 @@ def _make_json_serializable(value):
         return str(value)
 
 
+@main.group()
+@click.pass_context
+def macro(ctx):
+    """Manage and inspect query macros."""
+    pass
+
+
+@macro.command('list')
+@click.argument('macro_name', required=False)
+@click.option('--full', 'output_mode', flag_value='full',
+              help='Display macro definitions in @NAME := DEFINITION format')
+@click.option('--expand', 'output_mode', flag_value='expand',
+              help='Display expanded macro forms after AST substitution')
+@click.pass_context
+def macro_list(ctx, macro_name, output_mode):
+    """List configured macros from the config file.
+    
+    By default, displays macro names only, one per line.
+    If MACRO_NAME is provided, displays only that macro.
+    Use --full to show full definitions or --expand to show expanded forms.
+    
+    Examples:
+      remy --cache /path/to/notes macro list
+      remy --cache /path/to/notes macro list work
+      remy --cache /path/to/notes macro list --full
+      remy --cache /path/to/notes macro list work --expand
+    """
+    from remy.query.eval import parse_config_macros, resolve_macros
+    from remy.query.parser import parse_query
+    from remy.exceptions import RemyError
+    
+    cache = ctx.obj['cache']
+    
+    if cache is None:
+        raise click.UsageError("The --cache option is required for this command.")
+    
+    # Load macros from config
+    try:
+        config_macros_dict = cache.config_module.MACROS
+    except AttributeError:
+        # MACROS not defined in config
+        config_macros_dict = {}
+    
+    if not config_macros_dict:
+        # No macros defined - exit silently with no output
+        return
+    
+    # Parse the config macros
+    try:
+        parsed_macros = parse_config_macros(config_macros_dict)
+    except RemyError as e:
+        raise click.ClickException(f"Error parsing config macros: {e}")
+    
+    # Filter to specific macro if requested
+    if macro_name:
+        # Remove @ prefix if provided
+        if macro_name.startswith('@'):
+            macro_name = macro_name[1:]
+        
+        if macro_name not in parsed_macros:
+            raise click.ClickException(f"Macro '@{macro_name}' not found in config")
+        
+        macro_names = [macro_name]
+    else:
+        # Sort macro names alphabetically
+        macro_names = sorted(parsed_macros.keys())
+    
+    if not output_mode:
+        # Default mode: just print macro names with @ prefix
+        for name in macro_names:
+            print(f"@{name}")
+    
+    elif output_mode == 'full':
+        # Full mode: print @NAME := DEFINITION format
+        for name in macro_names:
+            # Get the original definition string from config
+            # Find the matching entry in the original config dict
+            original_def = None
+            for key, value in config_macros_dict.items():
+                # Parse this definition to check its name
+                try:
+                    temp_ast = parse_query(value)
+                    from remy.query.ast_nodes import StatementList, MacroDefinition
+                    if isinstance(temp_ast, StatementList) and len(temp_ast.statements) == 1:
+                        temp_def = temp_ast.statements[0]
+                    else:
+                        temp_def = temp_ast
+                    
+                    if isinstance(temp_def, MacroDefinition) and temp_def.name == name:
+                        original_def = value
+                        break
+                except Exception:
+                    # If parsing fails, skip this entry
+                    continue
+            
+            if original_def:
+                print(original_def)
+            else:
+                # Fallback: reconstruct from parsed macro
+                macro_def = parsed_macros[name]
+                body_str = _format_ast_node(macro_def.body)
+                if macro_def.parameters:
+                    params = ', '.join(macro_def.parameters)
+                    print(f"@{name}({params}) := {body_str}")
+                else:
+                    print(f"@{name} := {body_str}")
+    
+    elif output_mode == 'expand':
+        # Expand mode: expand the macro body while keeping parameters
+        for name in macro_names:
+            macro_def = parsed_macros[name]
+            
+            try:
+                # For parametric macros, we need to expand the body while keeping parameters
+                # For zero-arity macros, we can expand completely
+                if macro_def.parameters:
+                    # Expand the body with all config macros available
+                    expanded_body = _expand_macro_body(macro_def.body, parsed_macros)
+                    body_str = _format_ast_node(expanded_body)
+                    params = ', '.join(macro_def.parameters)
+                    print(f"@{name}({params}) := {body_str}")
+                else:
+                    # Zero-arity macro: create a reference and expand fully
+                    from remy.query.ast_nodes import MacroReference
+                    macro_ref = MacroReference(name, [])
+                    expanded = resolve_macros(macro_ref, parsed_macros)
+                    expanded_str = _format_ast_node(expanded)
+                    print(f"@{name} := {expanded_str}")
+                
+            except RemyError as e:
+                raise click.ClickException(f"Error expanding macro @{name}: {e}")
+
+
+def _expand_macro_body(body: 'ASTNode', config_macros: dict) -> 'ASTNode':
+    """
+    Expand macro references in a macro body while preserving parameter references.
+    
+    This function recursively expands any MacroReference nodes that refer to
+    config macros, but leaves Identifier nodes (which could be parameters) unchanged.
+    
+    Args:
+        body: The AST node representing the macro body
+        config_macros: Dictionary of parsed macro definitions
+        
+    Returns:
+        Expanded AST node with config macros resolved
+    """
+    from remy.query.ast_nodes import (
+        MacroReference, Compare, And, Or, Not, In, BinaryOp, 
+        FunctionCall, Identifier, Literal
+    )
+    from remy.query.eval import resolve_macros
+    
+    if isinstance(body, MacroReference):
+        # If this references a config macro, expand it
+        if body.name in config_macros:
+            # For zero-arity references, expand fully
+            if not body.arguments:
+                return resolve_macros(body, config_macros)
+            else:
+                # For parametric references, expand arguments first
+                expanded_args = [_expand_macro_body(arg, config_macros) for arg in body.arguments]
+                # Then try to expand the reference itself if possible
+                ref_with_expanded_args = MacroReference(body.name, expanded_args)
+                try:
+                    return resolve_macros(ref_with_expanded_args, config_macros)
+                except:
+                    # If expansion fails, return with expanded arguments
+                    return ref_with_expanded_args
+        else:
+            # Unknown macro reference, keep as-is but expand arguments
+            expanded_args = [_expand_macro_body(arg, config_macros) for arg in body.arguments]
+            return MacroReference(body.name, expanded_args)
+    
+    elif isinstance(body, Compare):
+        return Compare(
+            body.operator,
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, And):
+        return And(
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, Or):
+        return Or(
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, Not):
+        return Not(_expand_macro_body(body.operand, config_macros))
+    
+    elif isinstance(body, In):
+        return In(
+            _expand_macro_body(body.left, config_macros),
+            [_expand_macro_body(v, config_macros) for v in body.values]
+        )
+    
+    elif isinstance(body, BinaryOp):
+        return BinaryOp(
+            body.operator,
+            _expand_macro_body(body.left, config_macros),
+            _expand_macro_body(body.right, config_macros)
+        )
+    
+    elif isinstance(body, FunctionCall):
+        return FunctionCall(
+            body.function_name,
+            [_expand_macro_body(arg, config_macros) for arg in body.arguments]
+        )
+    
+    else:
+        # For Identifier, Literal, and other leaf nodes, return as-is
+        return body
+
+
+def _format_ast_node(node):
+    """
+    Format an AST node as a string for display.
+    
+    Args:
+        node: AST node to format
+        
+    Returns:
+        String representation of the node
+    """
+    from remy.query.ast_nodes import (
+        Literal, Identifier, Compare, And, Or, Not, In,
+        BinaryOp, MacroReference, FunctionCall,
+        DateTimeLiteral, DateLiteral, TimedeltaLiteral
+    )
+    
+    if isinstance(node, Literal):
+        # Format literals with proper quoting
+        if isinstance(node.value, str):
+            return f'"{node.value}"'
+        else:
+            return str(node.value)
+    
+    elif isinstance(node, DateTimeLiteral):
+        return f'"{node.value.isoformat()}"::timestamp'
+    
+    elif isinstance(node, DateLiteral):
+        return f'"{node.value.isoformat()}"::date'
+    
+    elif isinstance(node, TimedeltaLiteral):
+        # Format as "N unit" (e.g., "24 hours")
+        return f'"{node.value.value} {node.value.unit}"::timedelta'
+    
+    elif isinstance(node, Identifier):
+        return node.name
+    
+    elif isinstance(node, Compare):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"{left}{node.operator}{right}"
+    
+    elif isinstance(node, And):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} AND {right})"
+    
+    elif isinstance(node, Or):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} OR {right})"
+    
+    elif isinstance(node, Not):
+        operand = _format_ast_node(node.operand)
+        return f"NOT {operand}"
+    
+    elif isinstance(node, In):
+        left = _format_ast_node(node.left)
+        values = ', '.join(_format_ast_node(v) for v in node.values)
+        return f"{left} IN ({values})"
+    
+    elif isinstance(node, BinaryOp):
+        left = _format_ast_node(node.left)
+        right = _format_ast_node(node.right)
+        return f"({left} {node.operator} {right})"
+    
+    elif isinstance(node, MacroReference):
+        if node.arguments:
+            args = ', '.join(_format_ast_node(arg) for arg in node.arguments)
+            return f"@{node.name}({args})"
+        else:
+            return f"@{node.name}"
+    
+    elif isinstance(node, FunctionCall):
+        args = ', '.join(_format_ast_node(arg) for arg in node.arguments)
+        return f"{node.function_name}({args})"
+    
+    else:
+        # Fallback for other node types
+        return str(node)
+
+
 @main.command()
 @click.option('-o', '--output', 'output_file', type=click.Path(), help='Output file path for completion script')
 @click.argument('output_path', required=False, type=click.Path())

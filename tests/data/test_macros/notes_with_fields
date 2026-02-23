@@ -1,0 +1,29 @@
+NOTECARD task1 inbox-task
+:TAG: inbox
+:PRIORITY: 3
+:STATUS: active
+Task in inbox with priority 3
+
+NOTECARD task2 review-task
+:TAG: inbox
+:PRIORITY: 1
+:STATUS: active
+Another inbox task with priority 1
+
+NOTECARD task3 done-task
+:TAG: done
+:PRIORITY: 2
+:STATUS: completed
+Completed task
+
+NOTECARD task4 urgent
+:TAG: urgent
+:PRIORITY: 3
+:STATUS: active
+Urgent task with priority 3
+
+NOTECARD task5 archive
+:TAG: archive
+:PRIORITY: 1
+:STATUS: inactive
+Archived task

@@ -1015,6 +1015,110 @@ def test_edit_with_cache_from_environment(mock_execvp):
     # Verify execvp was called
     assert mock_execvp.called
 
+
+@patch('os.execvp')
+def test_edit_query_single_result(mock_execvp):
+    """Test editing with --query when query returns exactly one result."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # task3 is the only card with tag = 'done'
+    result = runner.invoke(
+        main,
+        ['--cache', str(DATA / 'test_notes'), 'edit', '--query', "tag = 'done'"],
+        env={'REMY_CACHE': ''}
+    )
+
+    assert result.exit_code == 0 or mock_execvp.called
+    assert mock_execvp.called
+    call_args = mock_execvp.call_args[0]
+    assert call_args[0] == 'vim'
+    command = call_args[1]
+    assert 'notes_with_fields' in command[1]
+
+
+@patch('os.execvp')
+def test_edit_query_no_results(mock_execvp):
+    """Test editing with --query when query returns no results."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ['--cache', str(DATA / 'test_notes'), 'edit', '--query', "tag = 'nonexistent'"],
+        env={'REMY_CACHE': ''}
+    )
+
+    assert result.exit_code != 0
+    assert 'Query returned no results' in result.output
+    assert "tag = 'nonexistent'" in result.output
+    assert not mock_execvp.called
+
+
+@patch('os.execvp')
+def test_edit_query_multiple_results_without_force(mock_execvp):
+    """Test editing with --query when query returns multiple results without --force."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Multiple tasks have tag = 'inbox'
+    result = runner.invoke(
+        main,
+        ['--cache', str(DATA / 'test_notes'), 'edit', '--query', "tag = 'inbox'"],
+        env={'REMY_CACHE': ''}
+    )
+
+    assert result.exit_code != 0
+    assert 'multiple' in result.output.lower()
+    assert not mock_execvp.called
+
+
+@patch('os.execvp')
+def test_edit_query_multiple_results_with_force(mock_execvp):
+    """Test editing with --query and --force when query returns multiple results."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Multiple tasks have tag = 'inbox'; --force opens the first
+    result = runner.invoke(
+        main,
+        ['--cache', str(DATA / 'test_notes'), 'edit', '--query', "tag = 'inbox'", '--force'],
+        env={'REMY_CACHE': ''}
+    )
+
+    assert result.exit_code == 0 or mock_execvp.called
+    assert mock_execvp.called
+    call_args = mock_execvp.call_args[0]
+    assert call_args[0] == 'vim'
+
+
+def test_edit_force_without_query():
+    """Test that --force without --query raises UsageError."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ['--cache', str(DATA / 'test_notes'), 'edit', '--force', 'task1'],
+        env={'REMY_CACHE': ''}
+    )
+
+    assert result.exit_code != 0
+    assert '--force' in result.output or 'force' in result.output.lower()
+
+
+def test_edit_query_help():
+    """Test that edit --help shows --query and --force options."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'edit', '--help'])
+
+    assert result.exit_code == 0
+    assert '--query' in result.output or '-q' in result.output
+    assert '--force' in result.output or '-f' in result.output
+
+
 def test_query_limit_basic():
     """Test that --limit returns exactly N results when N < total results."""
     from remy.cli.__main__ import main

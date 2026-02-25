@@ -1907,3 +1907,132 @@ def test_query_format_set_empty_result():
     assert result.exit_code == 0
     # Should output nothing for empty set
     assert result.output == ''
+
+
+# --- Field validation tests ---
+
+def test_query_fields_invalid_field_raises_error():
+    """Test that an invalid (non-existent) field name raises an error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', 'nonexistent_field'])
+
+    assert result.exit_code != 0
+    assert 'nonexistent_field' in result.output
+    assert 'does not reference a known field index' in result.output
+
+
+def test_query_fields_invalid_field_error_lists_available_indices():
+    """Test that the error message for an invalid field lists available indices."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', 'nonexistent_field'])
+
+    assert result.exit_code != 0
+    # The error message should list available indices from the config
+    assert 'TAG' in result.output or 'PRIORITY' in result.output
+
+
+def test_query_fields_invalid_pseudo_field_raises_error():
+    """Test that an invalid @pseudo-field raises an error with appropriate message."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@nonexistent'])
+
+    assert result.exit_code != 0
+    assert '@nonexistent' in result.output
+    assert 'does not reference a known pseudo-field' in result.output
+
+
+def test_query_fields_invalid_pseudo_field_error_lists_available_pseudo_fields():
+    """Test that the error message for an invalid @pseudo-field lists available pseudo-fields."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@nonexistent'])
+
+    assert result.exit_code != 0
+    # Error message should list known pseudo-fields
+    assert '@primary-label' in result.output
+
+
+def test_query_fields_valid_pseudo_fields_pass_validation():
+    """Test that all valid pseudo-fields pass validation without error."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    for pseudo_field in ['@primary-label', '@id', '@label', '@title', '@first-block']:
+        result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all',
+                                      '--fields', pseudo_field, '--limit', '1'])
+        assert result.exit_code == 0, f"Expected {pseudo_field} to be valid, got: {result.output}"
+
+
+def test_query_fields_valid_regular_fields_pass_validation():
+    """Test that valid field indices (from PARSER_BY_FIELD_NAME) pass validation."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # 'tag' and 'priority' are valid in the test_notes config
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all',
+                                  '--fields', '@primary-label,tag,priority', '--limit', '1'])
+    assert result.exit_code == 0
+
+
+def test_query_fields_case_insensitive_validation():
+    """Test that field validation is case-insensitive for regular fields."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # 'TAG' is in PARSER_BY_FIELD_NAME as uppercase; test various cases
+    for field in ['tag', 'TAG', 'Tag', 'tAg']:
+        result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all',
+                                      '--fields', field, '--limit', '1'])
+        assert result.exit_code == 0, f"Expected '{field}' to be valid, got: {result.output}"
+
+
+def test_query_fields_case_insensitive_pseudo_field_validation():
+    """Test that pseudo-field validation is case-insensitive."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # '@primary-label' in various cases should all be valid
+    for pseudo_field in ['@primary-label', '@PRIMARY-LABEL', '@Primary-Label']:
+        result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all',
+                                      '--fields', pseudo_field, '--limit', '1'])
+        assert result.exit_code == 0, f"Expected '{pseudo_field}' to be valid, got: {result.output}"
+
+
+def test_query_fields_invalid_field_with_empty_results():
+    """Test that invalid field names raise errors even when the query returns no results."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Use a query that returns no results, but with an invalid field name
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query',
+                                  "tag = 'nonexistent'", '--fields', 'bogus_field'])
+
+    assert result.exit_code != 0
+    assert 'bogus_field' in result.output
+    assert 'does not reference a known field index' in result.output
+
+
+def test_query_fields_error_different_message_for_pseudo_vs_regular():
+    """Test that error messages differ between invalid pseudo-fields and invalid regular fields."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+
+    result_pseudo = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all',
+                                         '--fields', '@badfield'])
+    result_regular = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all',
+                                          '--fields', 'badfield'])
+
+    assert result_pseudo.exit_code != 0
+    assert result_regular.exit_code != 0
+    # Pseudo-field error mentions "pseudo-field"
+    assert 'pseudo-field' in result_pseudo.output
+    # Regular field error mentions "field index"
+    assert 'field index' in result_regular.output

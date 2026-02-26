@@ -36,6 +36,51 @@ def parse_fields_option(fields_str):
     return [f.strip() for f in fields_str.split(',') if f.strip()]
 
 
+_PSEUDO_FIELDS = frozenset({'@primary-label', '@id', '@label', '@title', '@first-block'})
+
+
+def validate_field_name(field_name, cache):
+    """
+    Validate that a field name references a valid field index or pseudo-field.
+
+    Args:
+        field_name: The field name to validate (case-insensitive)
+        cache: NotecardCache instance for accessing field indices
+
+    Returns:
+        True if the field name is valid
+
+    Raises:
+        RemyError: If the field name doesn't reference a known field index or pseudo-field
+    """
+    from remy.exceptions import RemyError
+
+    field_name_lower = field_name.lower()
+
+    if field_name_lower in _PSEUDO_FIELDS:
+        return True
+
+    if field_name_lower.startswith('@'):
+        raise RemyError(
+            f"Identifier '{field_name}' does not reference a known pseudo-field. "
+            f"Available pseudo-fields: {', '.join(sorted(_PSEUDO_FIELDS))}"
+        )
+
+    field_name_upper = field_name.upper()
+    try:
+        available = cache.config_module.PARSER_BY_FIELD_NAME
+    except AttributeError:
+        available = {}
+
+    if field_name_upper not in available:
+        raise RemyError(
+            f"Identifier '{field_name}' does not reference a known field index. "
+            f"Available indices: {', '.join(sorted(available.keys()))}"
+        )
+
+    return True
+
+
 def extract_field_values(card, field_names, cache):
     """
     Extract requested field values from a notecard.
@@ -647,24 +692,36 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
     # Parse fields if specified
     field_names = parse_fields_option(fields_option) if fields_option else None
 
+    # Validate field names upfront (even when there are no matching cards)
+    if field_names:
+        from remy.exceptions import RemyError
+        try:
+            for fn in field_names:
+                validate_field_name(fn, cache)
+        except RemyError as e:
+            raise click.ClickException(str(e))
+
     # Format and output
     if field_names:
         # Field selection mode
-        if output_format.lower() == 'json':
-            import json
-            # Use field-specific JSON formatting
-            result = format_notecards_fields_json(unique_cards, field_names, cache)
-            
-            if pretty_print:
-                output = json.dumps(result, ensure_ascii=False, indent=2)
+        try:
+            if output_format.lower() == 'json':
+                import json
+                # Use field-specific JSON formatting
+                result = format_notecards_fields_json(unique_cards, field_names, cache)
+                
+                if pretty_print:
+                    output = json.dumps(result, ensure_ascii=False, indent=2)
+                else:
+                    output = json.dumps(result, ensure_ascii=False)
+                
+                print(output)
             else:
-                output = json.dumps(result, ensure_ascii=False)
-            
-            print(output)
-        else:
-            # Use field-specific raw (CSV) formatting
-            output = format_notecards_fields_raw(unique_cards, field_names, cache)
-            print(output, end='')
+                # Use field-specific raw (CSV) formatting
+                output = format_notecards_fields_raw(unique_cards, field_names, cache)
+                print(output, end='')
+        except RemyError as e:
+            raise click.ClickException(str(e))
     else:
         # Standard full notecard output
         if output_format.lower() == 'json':

@@ -1434,16 +1434,26 @@ def complete(output_file, output_path):
 
 @main.command()
 @click.argument('label', required=False)
+@click.option('--query', '-q', 'use_query', is_flag=True, default=False,
+              help='Interpret LABEL as a query expression and edit the single matching notecard.')
+@click.option('--force', '-f', 'force', is_flag=True, default=False,
+              help='When used with --query, open the first result if multiple notecards match.')
 @click.pass_context
-def edit(ctx, label):
+def edit(ctx, label, use_query, force):
     """Edit a notecard by label or create a new notecard.
 
     When LABEL is provided, opens the corresponding notecard in Vim.
     When no LABEL is provided, creates a new dated notecard file and opens it in Vim.
 
+    With --query/-q, LABEL is interpreted as a query expression. The editor is
+    opened on the single matching notecard. Use --force/-f to open the first
+    result when the query returns multiple matches.
+
     Examples:
       remy --cache /path/to/notes edit task1
       remy --cache /path/to/notes edit
+      remy --cache /path/to/notes edit --query ':STATUS: = "active"'
+      remy --cache /path/to/notes edit --query ':STATUS: = "active"' --force
     """
     import os
     from datetime import datetime, UTC
@@ -1454,6 +1464,9 @@ def edit(ctx, label):
     
     if cache is None:
         raise click.UsageError("The --cache option is required for this command.")
+
+    if force and not use_query:
+        raise click.UsageError("The --force option requires --query.")
     
     cache_url = cache.url
 
@@ -1464,7 +1477,36 @@ def edit(ctx, label):
         )
         sys.exit(1)
 
-    if label:
+    if label and use_query:
+        from remy.exceptions import RemyError
+
+        try:
+            cards = execute_query_filter(cache, label)
+        except RemyError as e:
+            click.echo(f"Error: {str(e)}", err=True)
+            sys.exit(1)
+        except Exception as e:
+            click.echo(f"Unexpected error: {str(e)}", err=True)
+            sys.exit(1)
+
+        if len(cards) == 0:
+            click.echo(
+                f"Error: Query returned no results. query: '{label}'",
+                err=True
+            )
+            sys.exit(1)
+        elif len(cards) > 1 and not force:
+            click.echo(
+                f"Error: Query returned multiple results. Use --force to open the first result. query: '{label}'",
+                err=True
+            )
+            sys.exit(1)
+
+        card = cards[0]
+        source_url = card.source_url
+        source_path = source_url.path
+        line_no = int(source_url.fragment) + 1
+    elif label:
         card = cache.find_card_by_label(label)
 
         if not card:

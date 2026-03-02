@@ -16,6 +16,8 @@ dependencies = [
     "sortedcontainers",
     "click",
     "python-dateutil",
+    "fastapi",
+    "uvicorn",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +25,7 @@ dev = [
     "flake8",
     "pytest",
     "sphinx",
+    "httpx",
 ]
 
 [project.scripts]

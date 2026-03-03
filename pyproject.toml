@@ -18,6 +18,8 @@ dependencies = [
     "python-dateutil",
     "fastapi",
     "uvicorn",
+    "httpx",
+    "fastmcp",
 ]
 
 [project.optional-dependencies]

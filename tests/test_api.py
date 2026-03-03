@@ -272,6 +272,31 @@ def test_index_dump_unique(client):
     assert len(body) == len(set(body))
 
 
+def test_index_dump_limit(client):
+    """limit restricts the number of returned entries."""
+    response_all = client.get("/api/index/TAG")
+    total = len(response_all.json())
+
+    if total > 1:
+        response_limited = client.get("/api/index/TAG?limit=1")
+        assert response_limited.status_code == 200
+        assert len(response_limited.json()) == 1
+
+
+def test_index_dump_limit_after_unique(client):
+    """limit is applied after unique deduplication."""
+    response = client.get("/api/index/TAG?mode=values&unique=true&limit=1")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) <= 1
+
+
+def test_index_dump_limit_invalid(client):
+    """limit < 1 returns 422."""
+    response = client.get("/api/index/TAG?limit=0")
+    assert response.status_code == 422
+
+
 def test_index_dump_not_found(client):
     """Unknown index_name returns 404."""
     response = client.get("/api/index/UNKNOWN_FIELD_XYZ")

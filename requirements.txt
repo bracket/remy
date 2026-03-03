@@ -1,2 +1,4 @@
 sortedcontainers
 lark
+fastapi
+uvicorn

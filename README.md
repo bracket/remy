@@ -73,7 +73,7 @@ See `docs/api_specification.md` for full endpoint documentation.
 
 ## MCP Server
 
-The Remy MCP server exposes notecard functionality to LLM clients (Claude, GPT, etc.) through the [Model Context Protocol](https://modelcontextprotocol.io/) over HTTP/SSE transport.
+The Remy MCP server exposes notecard functionality to LLM clients (Claude, GPT, etc.) through the [Model Context Protocol](https://modelcontextprotocol.io/) over streamable-HTTP transport.
 
 ### Prerequisites
 
@@ -112,10 +112,10 @@ python -m remy.mcp
 
 ### MCP Client Configuration
 
-To connect an MCP client to the Remy MCP server, configure the SSE endpoint:
+To connect an MCP client to the Remy MCP server, configure the streamable-HTTP endpoint:
 
 ```
-http://localhost:8080/sse
+http://localhost:8080/mcp
 ```
 
 ### Available MCP Tools

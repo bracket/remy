@@ -422,12 +422,14 @@ def dump_index(
     index_name: str,
     mode: str = Query("full", description="Output mode: full, labels, or values"),
     unique: bool = Query(False, description="Remove duplicate entries"),
+    limit: Optional[int] = Query(None, ge=1, description="Maximum number of entries to return"),
     stream: bool = Query(False, description="Stream results as NDJSON"),
 ):
     """Dump the contents of a specific field index.
 
     ``mode=full`` returns ``[label, value]`` pairs; ``mode=labels`` returns
-    labels only; ``mode=values`` returns values only.
+    labels only; ``mode=values`` returns values only.  When both ``unique``
+    and ``limit`` are specified, deduplication is applied first.
     """
     cache = get_cache()
 
@@ -471,6 +473,9 @@ def dump_index(
                 seen.add(key)
                 unique_data.append(item)
         data = unique_data
+
+    if limit is not None:
+        data = data[:limit]
 
     if stream:
         def _generate():

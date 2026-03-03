@@ -354,6 +354,7 @@ Dump the contents of a specific field index. Mirrors `remy index dump`.
 |-----------|------|----------|---------|-------------|
 | `mode` | string | No | `full` | Output mode: `full` (label+value pairs), `labels` (labels only), or `values` (values only) |
 | `unique` | boolean | No | `false` | Remove duplicate entries while maintaining sort order |
+| `limit` | integer | No | — | Maximum number of entries to return. Must be ≥ 1. Applied after `unique` deduplication. |
 | `stream` | boolean | No | `false` | Stream results as NDJSON |
 
 **Response schema (`mode=full`):**

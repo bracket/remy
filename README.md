@@ -59,3 +59,75 @@ Lap swim ideas
 ```
 
 They `remy` command line tool can be used to manage and search notecards in a directory of text files.
+
+## HTTP API
+
+The Remy HTTP API (FastAPI) exposes read-only notecard operations as JSON endpoints.
+
+```bash
+# Start the API server (REMY_CACHE points to your notecard directory)
+REMY_CACHE=/path/to/notes python -m remy.api
+```
+
+See `docs/api_specification.md` for full endpoint documentation.
+
+## MCP Server
+
+The Remy MCP server exposes notecard functionality to LLM clients (Claude, GPT, etc.) through the [Model Context Protocol](https://modelcontextprotocol.io/) over streamable-HTTP transport.
+
+### Prerequisites
+
+The FastAPI backend must be running before starting the MCP server:
+
+```bash
+REMY_CACHE=/path/to/notes python -m remy.api
+```
+
+### Starting the MCP Server
+
+```bash
+python -m remy.mcp
+```
+
+The server listens on `localhost:8080` by default.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REMY_API_URL` | `http://localhost:5000` | Base URL of the Remy FastAPI backend |
+| `REMY_MCP_HOST` | `localhost` | Host to bind the MCP server to |
+| `REMY_MCP_PORT` | `8080` | Port to bind the MCP server to |
+| `REMY_MCP_TIMEOUT` | `30` | HTTP request timeout in seconds |
+| `REMY_MCP_LOG_LEVEL` | `WARNING` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+
+### Example Configuration
+
+```bash
+export REMY_API_URL=http://localhost:5000
+export REMY_MCP_HOST=localhost
+export REMY_MCP_PORT=8080
+python -m remy.mcp
+```
+
+### MCP Client Configuration
+
+To connect an MCP client to the Remy MCP server, configure the streamable-HTTP endpoint:
+
+```
+http://localhost:8080/mcp
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `query_notecards` | Search for notecards using the Remy query language |
+| `get_notecard` | Retrieve a specific notecard by its exact label |
+| `list_field_indexes` | List all configured field index names |
+| `dump_field_index` | Retrieve the contents of a specific field index |
+| `validate_field_index` | Check for field parsing errors in a specific field index |
+| `list_macros` | List all configured query macros |
+| `query_set` | Execute a query expression and return the raw set result |
+
+See `docs/mcp_specification.md` for full tool documentation.

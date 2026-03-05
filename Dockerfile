@@ -58,10 +58,10 @@ RUN . /asdf/asdf.sh \
 # Compile mode: Build Node.js from source (takes ~85 minutes)
 # Used by snapshot-builder-node to create root_asdf_node.tbz2
 # Uses -j4 for parallel compilation
-# Node.js compilation requires Python (for its ./configure script), so we
-# install build-base and python3 here as build-time dependencies.
+# Requires the same build deps as the original combined Dockerfile:
+# python3 (for ./configure), build-base, linux-headers (linux/mman.h), openssl-dev, etc.
 RUN if [ "$BUILD_MODE" = "compile" ]; then \
-        apk add build-base python3 \
+        apk add build-base python3 linux-headers openssl-dev zlib-dev bzip2-dev xz-dev \
         && . /asdf/asdf.sh \
         && export MAKE_OPTS="-j4" \
         && ASDF_NODEJS_FORCE_COMPILE=1 ASDF_NODEJS_CONCURRENCY=4 asdf install nodejs 24.13.0 \

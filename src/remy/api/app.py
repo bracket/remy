@@ -6,14 +6,21 @@ endpoints with automatic OpenAPI documentation.
 """
 
 import json
+import logging
 import os
+import threading
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 
-# Global cache reference, set at startup
+logger = logging.getLogger(__name__)
+
+# Global cache reference, set at startup.  Access must be protected by
+# _cache_lock so that signal/FS-event handlers can invalidate it safely
+# while request handlers read it.
 notecard_cache = None
+_cache_lock = threading.Lock()
 
 app = FastAPI(
     title="Remy API",
@@ -23,10 +30,93 @@ app = FastAPI(
 
 
 def get_cache():
-    """Return the loaded notecard cache, raising 500 if not configured."""
-    if notecard_cache is None:
+    """Return a local reference to the loaded notecard cache.
+
+    Obtains the lock only long enough to read the module-level variable so
+    that cache invalidation cannot race with an in-flight request.  Raises
+    HTTP 500 if the cache has not been configured yet.
+    """
+    with _cache_lock:
+        cache = notecard_cache
+    if cache is None:
         raise HTTPException(status_code=500, detail="Notecard cache is not configured.")
-    return notecard_cache
+    return cache
+
+
+def invalidate_cache(reason: str = "unknown") -> None:
+    """Set the global notecard_cache to None so it is reloaded on next access.
+
+    Thread-safe: uses _cache_lock.  Active requests that already hold their
+    own local reference to the cache object will complete normally; the old
+    cache object is garbage-collected once all references are released.
+    """
+    global notecard_cache
+    with _cache_lock:
+        notecard_cache = None
+    logger.info("Notecard cache invalidated (reason: %s)", reason)
+
+
+# ---------------------------------------------------------------------------
+# SIGHUP signal handler
+# ---------------------------------------------------------------------------
+
+def _register_sighup_handler() -> None:
+    """Register a SIGHUP handler that invalidates the notecard cache.
+
+    SIGHUP is only available on POSIX systems; this function is a no-op on
+    Windows.
+    """
+    import signal as _signal
+    if not hasattr(_signal, 'SIGHUP'):
+        logger.debug("SIGHUP not available on this platform; skipping handler registration.")
+        return
+
+    def _handle_sighup(signum, frame):
+        logger.info("Received SIGHUP; invalidating notecard cache.")
+        invalidate_cache(reason="SIGHUP")
+
+    _signal.signal(_signal.SIGHUP, _handle_sighup)
+    logger.debug("SIGHUP handler registered.")
+
+
+# ---------------------------------------------------------------------------
+# File system watcher
+# ---------------------------------------------------------------------------
+
+def _start_fs_watcher(cache_path: str):
+    """Start a watchdog Observer monitoring *cache_path* for changes.
+
+    Returns the Observer instance so the caller can stop it on shutdown.
+    Returns None if watchdog is unavailable.
+    """
+    try:
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler
+    except ImportError:
+        logger.warning("watchdog is not installed; file system watching is disabled.")
+        return None
+
+    class _Handler(FileSystemEventHandler):
+        def on_any_event(self, event):
+            invalidate_cache(reason=f"file system event: {event.event_type} {event.src_path}")
+
+    observer = Observer()
+    observer.schedule(_Handler(), path=cache_path, recursive=True)
+    observer.daemon = True
+    observer.start()
+    logger.info("File system watcher started for path: %s", cache_path)
+    return observer
+
+
+def setup_cache_invalidation(cache_path: str):
+    """Register SIGHUP handler and start the file system watcher.
+
+    Call this once at application startup after the notecard cache has been
+    initialized.  Returns the Observer instance (or None on platforms /
+    configurations where it is unavailable) so it can be stopped on shutdown.
+    """
+    _register_sighup_handler()
+    return _start_fs_watcher(cache_path)
 
 
 def _make_json_serializable(value):

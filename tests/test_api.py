@@ -457,3 +457,134 @@ def test_macro_no_macros(client):
     response = client.get("/api/macro")
     assert response.status_code == 200
     assert response.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Cache invalidation
+# ---------------------------------------------------------------------------
+
+def test_invalidate_cache_sets_none():
+    """invalidate_cache() sets the global notecard_cache to None."""
+    from remy import NotecardCache
+    from remy.url import URL
+    import remy.api.app as app_module
+
+    url = URL(TEST_NOTES)
+    app_module.notecard_cache = NotecardCache(url)
+    assert app_module.notecard_cache is not None
+
+    app_module.invalidate_cache(reason="test")
+
+    assert app_module.notecard_cache is None
+
+
+def test_get_cache_raises_after_invalidation():
+    """get_cache() raises HTTP 500 after the cache has been invalidated."""
+    import remy.api.app as app_module
+    from fastapi import HTTPException
+
+    app_module.notecard_cache = None
+
+    with pytest.raises(HTTPException) as exc_info:
+        app_module.get_cache()
+
+    assert exc_info.value.status_code == 500
+
+
+def test_invalidate_cache_does_not_delete_existing_reference():
+    """Invalidating the global cache does not affect already-held local references."""
+    from remy import NotecardCache
+    from remy.url import URL
+    import remy.api.app as app_module
+
+    url = URL(TEST_NOTES)
+    app_module.notecard_cache = NotecardCache(url)
+
+    # Simulate a request obtaining its own reference before invalidation
+    local_ref = app_module.get_cache()
+    assert local_ref is not None
+
+    app_module.invalidate_cache(reason="test")
+
+    # Global is now None but the local reference is still usable
+    assert app_module.notecard_cache is None
+    assert local_ref is not None
+    assert local_ref.cards_by_label is not None
+
+
+def test_sighup_handler_invalidates_cache():
+    """Sending SIGHUP to the current process invalidates the notecard cache."""
+    import os
+    import signal
+    import time
+    import remy.api.app as app_module
+    from remy import NotecardCache
+    from remy.url import URL
+
+    if not hasattr(signal, 'SIGHUP'):
+        pytest.skip("SIGHUP not available on this platform")
+
+    url = URL(TEST_NOTES)
+    app_module.notecard_cache = NotecardCache(url)
+    assert app_module.notecard_cache is not None
+
+    app_module._register_sighup_handler()
+    os.kill(os.getpid(), signal.SIGHUP)
+
+    # Signal handlers in CPython run synchronously between bytecodes, so the
+    # cache should already be None; poll briefly to handle any edge cases.
+    deadline = time.monotonic() + 2.0
+    while app_module.notecard_cache is not None and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert app_module.notecard_cache is None, "Cache was not invalidated after SIGHUP"
+
+
+def test_fs_watcher_starts_and_stops():
+    """_start_fs_watcher returns an Observer that can be started and stopped."""
+    import remy.api.app as app_module
+
+    observer = app_module._start_fs_watcher(str(TEST_NOTES))
+    if observer is None:
+        pytest.skip("watchdog not available")
+
+    assert observer.is_alive()
+    observer.stop()
+    observer.join()
+    assert not observer.is_alive()
+
+
+def test_fs_watcher_invalidates_cache_on_change(tmp_path):
+    """Creating a file in the watched directory invalidates the cache."""
+    import time
+    import remy.api.app as app_module
+    from remy import NotecardCache
+    from remy.url import URL
+
+    # Set up a temporary cache-like directory with the minimum required structure
+    remy_dir = tmp_path / '.remy'
+    remy_dir.mkdir()
+    (remy_dir / 'config.py').write_text("PARSER_BY_FIELD_NAME = {}\n")
+
+    url = URL(tmp_path)
+    app_module.notecard_cache = NotecardCache(url)
+    assert app_module.notecard_cache is not None
+
+    observer = app_module._start_fs_watcher(str(tmp_path))
+    if observer is None:
+        pytest.skip("watchdog not available")
+
+    try:
+        # Create a new file in the watched directory to trigger an event
+        (tmp_path / 'new_note.txt').write_text("NOTECARD test\nsome content\n")
+
+        # Give the watcher time to detect the change
+        deadline = time.monotonic() + 5.0
+        while app_module.notecard_cache is not None and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+        assert app_module.notecard_cache is None, "Cache was not invalidated after file creation"
+    finally:
+        observer.stop()
+        observer.join()
+

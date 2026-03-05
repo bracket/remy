@@ -54,7 +54,7 @@ services:
     environment:
       - REMY_MCP_HOST=0.0.0.0
       - REMY_MCP_PORT=42626
-      - REMY_API_URL=http://remy-api:42625
+      - REMY_API_URL=http://host.docker.internal:42625
     entrypoint: /bin/sh -c
     command: |
       'sh -s <<EOF

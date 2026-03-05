@@ -32,9 +32,7 @@ services:
     expose:
       - "42625"
     environment:
-      - REMY_CACHE=/dropbox
-    volumes:
-      - dropbox_data:/dropbox
+      - REMY_CACHE
     entrypoint: /bin/sh -c
     command: |
       'sh -s <<EOF
@@ -63,12 +61,6 @@ services:
         . /asdf/asdf.sh
         python -m remy.mcp
       EOF'
-
-  dropbox:
-    image: otherguy/dropbox
-    volumes:
-      - dropbox_data:/dropbox
-      - dropbox_config:/dbox
 
   # Auxiliary service: build and save a Python-only asdf snapshot
   # Run once with: docker compose run --rm snapshot-builder-python
@@ -132,7 +124,3 @@ services:
         echo "Node.js snapshot created successfully at /mnt/build/root_asdf_node.tbz2"
         exit 0
       EOF'
-
-volumes:
-  dropbox_data:
-  dropbox_config:

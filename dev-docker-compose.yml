@@ -1,0 +1,77 @@
+services:
+  remy-vite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-vite
+      args:
+        BUILD_MODE: restore
+    restart: "unless-stopped"
+    ports:
+      - "42624:42624"
+    expose:
+      - "42624"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - type: bind
+        source: ./vite/vite
+        target: /app
+      - type: volume
+        source: vite_node_modules
+        target: /app/node_modules
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        . /asdf/asdf.sh
+        cd /app
+        npm install
+        npx vite dev --port 42624 --host 0.0.0.0
+      EOF'
+
+  remy-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-python
+      args:
+        BUILD_MODE: restore
+    restart: "unless-stopped"
+    ports:
+      - "42625:42625"
+    expose:
+      - "42625"
+    environment:
+      - REMY_CACHE
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        . /asdf/asdf.sh
+        python -m remy.api --host 0.0.0.0 --port 42625
+      EOF'
+
+  remy-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-python
+      args:
+        BUILD_MODE: restore
+    restart: "unless-stopped"
+    ports:
+      - "42626:42626"
+    expose:
+      - "42626"
+    environment:
+      - REMY_MCP_HOST=0.0.0.0
+      - REMY_MCP_PORT=42626
+      - REMY_API_URL=http://remy-api:42625
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        . /asdf/asdf.sh
+        python -m remy.mcp
+      EOF'
+
+volumes:
+  vite_node_modules:

@@ -24,7 +24,7 @@ def main():
         help="Location of the Remy notecard cache (default: $REMY_CACHE)",
     )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=5000, help="Bind port (default: 5000)")
+    parser.add_argument("--port", type=int, default=42625, help="Bind port (default: 42625)")
     args = parser.parse_args()
 
     cache_path = args.cache

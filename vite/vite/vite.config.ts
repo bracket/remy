@@ -10,8 +10,7 @@ export default vite.defineConfig(
                 server: {
                     proxy: {
                         '/api': {
-                            target: 'http://host.docker.internal:5000/api',
-                            rewrite: (path) => path.replace(/^\/api/, ''),
+                            target: 'http://remy-api:42625',
                         },
                     },
                 }

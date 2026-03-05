@@ -1,0 +1,126 @@
+services:
+  remy-vite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-vite
+      args:
+        BUILD_MODE: restore
+    ports:
+      - "42624:42624"
+    expose:
+      - "42624"
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        . /asdf/asdf.sh
+        cd /app
+        npm install
+        npx vite build
+        npx vite preview --port 42624 --host 0.0.0.0
+      EOF'
+
+  remy-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-python
+      args:
+        BUILD_MODE: restore
+    ports:
+      - "42625:42625"
+    expose:
+      - "42625"
+    environment:
+      - REMY_CACHE
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        . /asdf/asdf.sh
+        python -m remy.api --host 0.0.0.0 --port 42625
+      EOF'
+
+  remy-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-python
+      args:
+        BUILD_MODE: restore
+    ports:
+      - "42626:42626"
+    expose:
+      - "42626"
+    environment:
+      - REMY_MCP_HOST=0.0.0.0
+      - REMY_MCP_PORT=42626
+      - REMY_API_URL=http://host.docker.internal:42625
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        . /asdf/asdf.sh
+        python -m remy.mcp
+      EOF'
+
+  # Auxiliary service: build and save a Python-only asdf snapshot
+  # Run once with: docker compose run --rm snapshot-builder-python
+  snapshot-builder-python:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-python
+      args:
+        BUILD_MODE: compile
+      # Increase shared memory size for compilation
+      shm_size: 4gb
+    # Set high memory limits for the build process
+    mem_limit: 16g
+    memswap_limit: 16g
+    volumes:
+      - type: bind
+        source: .
+        target: /mnt/build
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        echo "Creating Python snapshot tarball..."
+        if [ -f /root/.tool-versions ]; then
+          tar -cvjf /mnt/build/root_asdf_python.tbz2 /root/.asdf /root/.tool-versions
+        else
+          tar -cvjf /mnt/build/root_asdf_python.tbz2 /root/.asdf
+        fi
+        echo "Python snapshot created successfully at /mnt/build/root_asdf_python.tbz2"
+        exit 0
+      EOF'
+
+  # Auxiliary service: build and save a Node.js-only asdf snapshot
+  # Run once with: docker compose run --rm snapshot-builder-node
+  snapshot-builder-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remy-vite
+      args:
+        BUILD_MODE: compile
+      # Increase shared memory size for Node.js compilation
+      shm_size: 4gb
+    # Set high memory limits for the build process
+    # Increased to 16GB to prevent out-of-memory errors during Node.js V8 compilation
+    mem_limit: 16g
+    memswap_limit: 16g
+    volumes:
+      - type: bind
+        source: .
+        target: /mnt/build
+    entrypoint: /bin/sh -c
+    command: |
+      'sh -s <<EOF
+        echo "Creating Node.js snapshot tarball..."
+        if [ -f /root/.tool-versions ]; then
+          tar -cvjf /mnt/build/root_asdf_node.tbz2 /root/.asdf /root/.tool-versions
+        else
+          tar -cvjf /mnt/build/root_asdf_node.tbz2 /root/.asdf
+        fi
+        echo "Node.js snapshot created successfully at /mnt/build/root_asdf_node.tbz2"
+        exit 0
+      EOF'

@@ -9,7 +9,11 @@ configured via the REMY_MCP_HOST and REMY_MCP_PORT environment variables
 """
 
 import uvicorn
+import os
 from . import mcp, MCP_HOST, MCP_PORT
+
+
+REMY_MCP_DEBUG = os.environ.get("REMY_MCP_DEBUG", "").lower() in ("1", "true", "yes", "on")
 
 class FixAcceptHeaderMiddleware:
     def __init__(self, app):
@@ -79,7 +83,9 @@ class DebugMiddleware:
 def main():
     app = mcp.http_app(path="/mcp")
     app = FixAcceptHeaderMiddleware(app)
-    app = DebugMiddleware(app)
+
+    if REMY_MCP_DEBUG:
+        app = DebugMiddleware(app)
 
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
 

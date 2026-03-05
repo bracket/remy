@@ -42,9 +42,7 @@ services:
     expose:
       - "42625"
     environment:
-      - REMY_CACHE=/dropbox
-    volumes:
-      - dropbox_data:/dropbox
+      - REMY_CACHE
     entrypoint: /bin/sh -c
     command: |
       'sh -s <<EOF
@@ -75,14 +73,5 @@ services:
         python -m remy.mcp
       EOF'
 
-  dropbox:
-    image: otherguy/dropbox
-    restart: "unless-stopped"
-    volumes:
-      - dropbox_data:/dropbox
-      - dropbox_config:/dbox
-
 volumes:
-  dropbox_data:
-  dropbox_config:
   vite_node_modules:

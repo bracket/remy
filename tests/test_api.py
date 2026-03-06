@@ -17,12 +17,12 @@ TEST_NOTES_MALFORMED = DATA / 'test_notes_malformed'
 
 def _make_client(cache_path):
     """Create a TestClient for the API with the given cache path."""
-    from remy import NotecardCache
     from remy.url import URL
     import remy.api.app as app_module
 
     url = URL(cache_path)
-    app_module.notecard_cache = NotecardCache(url)
+    app_module._cache_url = url
+    app_module.notecard_cache = None  # ensure a fresh lazy load on first request
 
     return TestClient(app_module.app)
 
@@ -479,16 +479,33 @@ def test_invalidate_cache_sets_none():
 
 
 def test_get_cache_raises_after_invalidation():
-    """get_cache() raises HTTP 500 after the cache has been invalidated."""
+    """get_cache() raises HTTP 500 when cache is None and no URL is configured."""
     import remy.api.app as app_module
     from fastapi import HTTPException
 
     app_module.notecard_cache = None
+    app_module._cache_url = None
 
     with pytest.raises(HTTPException) as exc_info:
         app_module.get_cache()
 
     assert exc_info.value.status_code == 500
+
+
+def test_get_cache_reloads_after_invalidation():
+    """get_cache() transparently reloads the cache after invalidation."""
+    from remy.url import URL
+    import remy.api.app as app_module
+
+    app_module._cache_url = URL(TEST_NOTES)
+    app_module.notecard_cache = None
+
+    cache = app_module.get_cache()
+
+    assert cache is not None
+    # Verify that the module-level variable was repopulated so subsequent
+    # calls return the same instance without rebuilding the cache again.
+    assert app_module.notecard_cache is cache
 
 
 def test_invalidate_cache_does_not_delete_existing_reference():

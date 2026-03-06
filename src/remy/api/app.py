@@ -16,9 +16,13 @@ from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
-# Global cache reference, set at startup.  Access must be protected by
-# _cache_lock so that signal/FS-event handlers can invalidate it safely
-# while request handlers read it.
+# URL used to (re)construct the notecard cache.  Set once at startup by the
+# entry-point; None means the server is not yet configured.
+_cache_url = None
+
+# Global cache reference.  Access must be protected by _cache_lock so that
+# signal/FS-event handlers can invalidate it safely while request handlers
+# read it.  None means "needs to be (re)loaded".
 notecard_cache = None
 _cache_lock = threading.Lock()
 
@@ -32,15 +36,24 @@ app = FastAPI(
 def get_cache():
     """Return a local reference to the loaded notecard cache.
 
-    Obtains the lock only long enough to read the module-level variable so
-    that cache invalidation cannot race with an in-flight request.  Raises
-    HTTP 500 if the cache has not been configured yet.
+    If the cache has been invalidated (set to None), it is transparently
+    reloaded from _cache_url before being returned.  The check-and-create
+    sequence is performed under _cache_lock so concurrent requests do not
+    race to build multiple cache instances.  Raises HTTP 500 only when no
+    cache URL has been configured at all.
     """
+    global notecard_cache
     with _cache_lock:
-        cache = notecard_cache
-    if cache is None:
-        raise HTTPException(status_code=500, detail="Notecard cache is not configured.")
-    return cache
+        if notecard_cache is None:
+            if _cache_url is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Notecard cache is not configured.",
+                )
+            from remy.notecard_cache import NotecardCache
+            logger.info("Loading notecard cache from %s", _cache_url)
+            notecard_cache = NotecardCache(_cache_url)
+        return notecard_cache
 
 
 def invalidate_cache(reason: str = "unknown") -> None:

@@ -39,9 +39,8 @@ def main():
         )
         sys.exit(1)
 
-    # Load the notecard cache and inject it into the app module
+    # Register the cache URL so get_cache() can (re)load it on demand
     from pathlib import Path
-    from remy import NotecardCache
     from remy.url import URL
     import remy.api.app as app_module
 
@@ -49,7 +48,7 @@ def main():
     if not url.scheme:
         url = URL(Path(cache_path))
 
-    app_module.notecard_cache = NotecardCache(url)
+    app_module._cache_url = url
 
     # Register SIGHUP handler and start the file system watcher
     resolved_path = str(url.path) if url.path else cache_path

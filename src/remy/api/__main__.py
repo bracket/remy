@@ -9,11 +9,14 @@ environment variable.
 """
 
 import argparse
+import logging
 import os
 import sys
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+
     parser = argparse.ArgumentParser(
         description="Remy FastAPI HTTP API server",
         prog="python -m remy.api",
@@ -36,9 +39,8 @@ def main():
         )
         sys.exit(1)
 
-    # Load the notecard cache and inject it into the app module
+    # Register the cache URL so get_cache() can (re)load it on demand
     from pathlib import Path
-    from remy import NotecardCache
     from remy.url import URL
     import remy.api.app as app_module
 
@@ -46,10 +48,19 @@ def main():
     if not url.scheme:
         url = URL(Path(cache_path))
 
-    app_module.notecard_cache = NotecardCache(url)
+    app_module._cache_url = url
+
+    # Register SIGHUP handler and start the file system watcher
+    resolved_path = str(url.path) if url.path else cache_path
+    _observer = app_module.setup_cache_invalidation(resolved_path)
 
     import uvicorn
-    uvicorn.run(app_module.app, host=args.host, port=args.port)
+    try:
+        uvicorn.run(app_module.app, host=args.host, port=args.port)
+    finally:
+        if _observer is not None:
+            _observer.stop()
+            _observer.join()
 
 
 if __name__ == "__main__":

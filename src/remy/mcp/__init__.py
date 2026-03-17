@@ -14,6 +14,7 @@ Configuration (environment variables):
     REMY_MCP_PORT      — Port to bind the MCP server to (default: 8080)
 """
 
+import datetime
 import logging
 import os
 from typing import Optional
@@ -262,3 +263,20 @@ def query_set(query: str) -> list:
     response = get_client().get("/api/query", params=params)
     logger.debug("Response: %d", response.status_code)
     return handle_api_response(response)
+
+
+@mcp.tool()
+def get_current_time() -> str:
+    """Return the current local date and time of the Remy server as an ISO 8601 string.
+
+    Use this tool when you need to know the server's current local date and time,
+    for example when constructing time-sensitive queries such as filtering notecards
+    by creation or due date.  The returned string includes the UTC offset so that
+    the caller can convert to any timezone if needed.
+
+    Returns:
+        The current local datetime with UTC offset, e.g. "2026-03-17T09:49:50-07:00".
+    """
+    now = datetime.datetime.now().astimezone()
+    logger.debug("get_current_time: %s", now.isoformat())
+    return now.isoformat()

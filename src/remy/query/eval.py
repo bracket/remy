@@ -583,22 +583,18 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     # The NotecardIndex already returns (value, label) pairs
     # We need to convert them to PairSets with type prefixes
 
-    # For ordering operators, verify that the query value's type matches the index
-    if ast.operator in ('<', '<=', '>', '>='):
-        indexed_types = index.indexed_types
-        if indexed_types and type(value) not in indexed_types:
-            indexed_type_names = ', '.join(sorted(t.__name__ for t in indexed_types))
-            raise InvalidComparison(
-                f"Cannot compare {type(value).__name__} against field '{field_name}' "
-                f"which contains {indexed_type_names} values."
-            )
-
     def _type_mismatch_error():
         indexed_type_names = ', '.join(sorted(t.__name__ for t in index.indexed_types))
         return InvalidComparison(
             f"Cannot compare {type(value).__name__} against field '{field_name}' "
             f"which contains {indexed_type_names} values."
         )
+
+    # For ordering operators, verify that the query value's type matches the index
+    if ast.operator in ('<', '<=', '>', '>='):
+        indexed_types = index.indexed_types
+        if indexed_types and type(value) not in indexed_types:
+            raise _type_mismatch_error()
 
     if ast.operator == '=':
         # Exact match: low=value, high=value

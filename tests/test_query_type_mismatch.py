@@ -264,16 +264,16 @@ def test_lt_against_empty_index_returns_empty():
 # Test: NotecardIndex.indexed_types is populated correctly after index build
 # ---------------------------------------------------------------------------
 
-class _MockCard:
+class MockCard:
     def __init__(self, primary_label, content, source_url='mock://test'):
         self.primary_label = primary_label
         self.content = content
         self.source_url = source_url
 
 
-class _MockNotecardCache:
+class MockNotecardCache:
     def __init__(self, cards):
-        # cards: list of _MockCard
+        # cards: list of MockCard
         self.cards_by_label = {card.primary_label: card for card in cards}
         self.primary_labels = [card.primary_label for card in cards]
 
@@ -289,10 +289,10 @@ def _datetime_parser(value):
 def test_notecard_index_indexed_types_datetime():
     """NotecardIndex.indexed_types returns frozenset({datetime}) for datetime values."""
     cards = [
-        _MockCard('card1', ':CREATED: 2024-05-25T00:00:00\nContent 1'),
-        _MockCard('card2', ':CREATED: 2024-05-30T00:00:00\nContent 2'),
+        MockCard('card1', ':CREATED: 2024-05-25T00:00:00\nContent 1'),
+        MockCard('card2', ':CREATED: 2024-05-30T00:00:00\nContent 2'),
     ]
-    cache = _MockNotecardCache(cards)
+    cache = MockNotecardCache(cards)
     idx = NotecardIndex(cache, 'CREATED', _datetime_parser)
 
     # Before access, should not yet be built
@@ -304,9 +304,9 @@ def test_notecard_index_indexed_types_datetime():
 def test_notecard_index_indexed_types_empty():
     """NotecardIndex.indexed_types is an empty frozenset when no cards have the field."""
     cards = [
-        _MockCard('card1', 'No field here\nJust content'),
+        MockCard('card1', 'No field here\nJust content'),
     ]
-    cache = _MockNotecardCache(cards)
+    cache = MockNotecardCache(cards)
     idx = NotecardIndex(cache, 'CREATED', _datetime_parser)
 
     result = idx.indexed_types
@@ -316,9 +316,9 @@ def test_notecard_index_indexed_types_empty():
 def test_notecard_index_indexed_types_cached():
     """NotecardIndex.indexed_types returns the same frozenset on repeated access."""
     cards = [
-        _MockCard('card1', ':CREATED: 2024-05-25T00:00:00\nContent'),
+        MockCard('card1', ':CREATED: 2024-05-25T00:00:00\nContent'),
     ]
-    cache = _MockNotecardCache(cards)
+    cache = MockNotecardCache(cards)
     idx = NotecardIndex(cache, 'CREATED', _datetime_parser)
 
     first = idx.indexed_types

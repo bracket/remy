@@ -29,6 +29,10 @@ class MockNotecardIndex:
         self.field_name = field_name.upper()
         self.value_to_labels = value_to_labels
 
+    @property
+    def indexed_types(self):
+        return frozenset(type(v) for v in self.value_to_labels.keys())
+
     def find(self, low=null, high=null, snap=None):
         """
         Mock implementation of NotecardIndex.find().

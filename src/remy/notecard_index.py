@@ -17,6 +17,7 @@ class NotecardIndex(object):
 
         self.__index = None
         self.__inverse = None
+        self.__indexed_types = None
 
 
     @property
@@ -28,6 +29,7 @@ class NotecardIndex(object):
             return self.__index
 
         index = SortedSet()
+        indexed_types_set = set()
         name, parser = self.field_name, self.field_parser
 
         for label, card in self.notecard_cache.cards_by_label.items():
@@ -43,6 +45,7 @@ class NotecardIndex(object):
 
                 try:
                     for key in self.field_parser(node.value):
+                        indexed_types_set.add(type(key))
                         key = (id(type(key)), key)
                         index.add((key, label))
                 except Exception as e:
@@ -57,8 +60,16 @@ class NotecardIndex(object):
                     continue
 
         self.__index = index
+        self.__indexed_types = frozenset(indexed_types_set)
 
         return index
+
+
+    @property
+    def indexed_types(self) -> frozenset:
+        if self.__indexed_types is None:
+            _ = self.index  # trigger index build
+        return self.__indexed_types
 
 
     @property
@@ -164,7 +175,10 @@ class PseudoIndex(object):
                 f"Unknown pseudo-index: {self.field_name}. "
                 f"Known pseudo-indices: {', '.join(sorted(self.KNOWN_PSEUDO_INDICES))}"
             )
-    
+
+        self.__index = None
+        self.__indexed_types = None
+
     @property
     def index(self):
         """
@@ -173,22 +187,29 @@ class PseudoIndex(object):
         Returns:
             SortedSet of ((type_id, value), label) tuples
         """
+        if self.__index is not None:
+            return self.__index
+
         index = SortedSet()
-        
+        indexed_types_set = set()
+
         if self.field_name == '@ID':
             # @id pseudo-index: (label, label) pairs for all primary labels
             for label in self.notecard_cache.primary_labels:
+                indexed_types_set.add(type(label))
                 key = (id(type(label)), label)
                 index.add((key, label))
         elif self.field_name == '@LABEL':
             # @label pseudo-index: (label, primary_label) pairs for all labels
             # This maps all labels (including non-primary) to their primary label
             for label, card in self.notecard_cache.cards_by_label.items():
+                indexed_types_set.add(type(label))
                 key = (id(type(label)), label)
                 index.add((key, card.primary_label))
         elif self.field_name == '@PRIMARY-LABEL':
             # @primary-label pseudo-index: similar to @id
             for label in self.notecard_cache.primary_labels:
+                indexed_types_set.add(type(label))
                 key = (id(type(label)), label)
                 index.add((key, label))
         else:
@@ -197,8 +218,17 @@ class PseudoIndex(object):
                 f"Unknown pseudo-index: {self.field_name}. "
                 f"Known pseudo-indices: {', '.join(sorted(self.KNOWN_PSEUDO_INDICES))}"
             )
-        
+
+        self.__index = index
+        self.__indexed_types = frozenset(indexed_types_set)
+
         return index
+
+    @property
+    def indexed_types(self) -> frozenset:
+        if self.__indexed_types is None:
+            _ = self.index  # trigger index build
+        return self.__indexed_types
     
     @property
     def inverse(self):

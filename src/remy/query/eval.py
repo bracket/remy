@@ -593,6 +593,13 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
                 f"which contains {indexed_type_names} values."
             )
 
+    def _type_mismatch_error():
+        indexed_type_names = ', '.join(sorted(t.__name__ for t in index.indexed_types))
+        return InvalidComparison(
+            f"Cannot compare {type(value).__name__} against field '{field_name}' "
+            f"which contains {indexed_type_names} values."
+        )
+
     if ast.operator == '=':
         # Exact match: low=value, high=value
         return create_pairset(index.find(low=value, high=value))
@@ -605,11 +612,7 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
                 if field_value < value:
                     result.add(((id(type(field_value)), field_value), label))
             except TypeError:
-                indexed_type_names = ', '.join(sorted(t.__name__ for t in index.indexed_types))
-                raise InvalidComparison(
-                    f"Cannot compare {type(value).__name__} against field '{field_name}' "
-                    f"which contains {indexed_type_names} values."
-                )
+                raise _type_mismatch_error()
         return result
     
     elif ast.operator == '<=':
@@ -624,11 +627,7 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
                 if field_value > value:
                     result.add(((id(type(field_value)), field_value), label))
             except TypeError:
-                indexed_type_names = ', '.join(sorted(t.__name__ for t in index.indexed_types))
-                raise InvalidComparison(
-                    f"Cannot compare {type(value).__name__} against field '{field_name}' "
-                    f"which contains {indexed_type_names} values."
-                )
+                raise _type_mismatch_error()
         return result
     
     elif ast.operator == '>=':

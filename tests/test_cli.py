@@ -2140,3 +2140,85 @@ def test_query_fields_error_different_message_for_pseudo_vs_regular():
     assert 'pseudo-field' in result_pseudo.output
     # Regular field error mentions "field index"
     assert 'field index' in result_regular.output
+
+
+# --- --count option tests ---
+
+def test_query_count_all():
+    """Test --count with --all in notecard mode returns the total notecard count."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # First get the actual notecards to know the expected count
+    result_all = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all'])
+    import re
+    expected_count = len(re.findall(r'^NOTECARD ', result_all.output, re.MULTILINE))
+
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--count'])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == str(expected_count)
+
+
+def test_query_count_with_expression():
+    """Test --count with a query expression returns the correct filtered count."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "tag = 'inbox'", '--count'])
+
+    assert result.exit_code == 0
+    # There are 2 inbox notecards (task1 and task2)
+    assert result.output.strip() == '2'
+
+
+def test_query_count_with_limit():
+    """Test --count with --limit returns the count after limiting."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--limit', '5', '--count'])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == '5'
+
+
+def test_query_count_with_fields():
+    """Test --count with --fields @id returns the correct row count."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Get the actual row count from full output for comparison
+    result_full = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@id'])
+    expected_lines = len([l for l in result_full.output.splitlines() if l])
+
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--fields', '@id', '--count'])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == str(expected_lines)
+
+
+def test_query_count_with_format_set():
+    """Test --count with --format set returns the correct set entry count."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    # Get actual set output for comparison
+    result_full = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "labels(tag = 'inbox')", '--format', 'set'])
+    expected_count = len([l for l in result_full.output.splitlines() if l])
+
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', "labels(tag = 'inbox')", '--format', 'set', '--count'])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == str(expected_count)
+
+
+def test_query_count_with_pretty_print_raises_error():
+    """Test that --count with --pretty-print raises a UsageError."""
+    from remy.cli.__main__ import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ['--cache', str(DATA / 'test_notes'), 'query', '--all', '--count', '--pretty-print'])
+
+    assert result.exit_code != 0
+    assert '--count is not compatible with --pretty-print' in result.output

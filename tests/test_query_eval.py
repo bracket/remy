@@ -990,11 +990,19 @@ def test_transitive_closure_disconnected_components():
 
 
 def test_transitive_closure_wrong_arg_count():
-    """Wrong argument count raises RemyError."""
+    """Wrong argument count (too few or too many) raises RemyError."""
     edges_index = _make_edges_index([('a', 'b')])
     field_indices = {'EDGES': edges_index}
 
+    # Too few arguments
     ast = FunctionCall('transitive_closure', [Identifier('edges')])
+    with pytest.raises(RemyError, match="transitive_closure expects 2 arguments"):
+        _evaluate(ast, field_indices)
+
+    # Too many arguments
+    ast = FunctionCall('transitive_closure', [
+        Identifier('edges'), Identifier('edges'), Identifier('edges')
+    ])
     with pytest.raises(RemyError, match="transitive_closure expects 2 arguments"):
         _evaluate(ast, field_indices)
 
@@ -1049,7 +1057,7 @@ def test_transitive_closure_via_evaluator_dispatch():
     labels = pairset_to_labelset(result)
     # 'a' should be the label in all result pairs (the seed)
     assert labels == {'a'}
-    # The destinations reachable from 'a' are 'b' and 'c'
-    destinations = {v for (_, v), _ in result}
-    assert destinations == {'b', 'c'}
+    # The nodes reachable from 'a' are 'b' and 'c'
+    reachable_nodes = {v for (_, v), _ in result}
+    assert reachable_nodes == {'b', 'c'}
 

@@ -741,6 +741,8 @@ def _evaluate_function_call(ast: FunctionCall, field_indices: Dict[str, 'Notecar
         return _call_slice_by_label_from(ast, field_indices)
     elif func_name == 'slice_by_value_from':
         return _call_slice_by_value_from(ast, field_indices)
+    elif func_name == 'transitive_closure':
+        return _call_transitive_closure(ast, field_indices)
     else:
         raise RemyError(f"Unknown function: {ast.function_name}")
 
@@ -953,6 +955,66 @@ def _call_slice_by_value_from(ast: FunctionCall, field_indices: Dict[str, 'Notec
         raise RemyError(f"slice_by_value_from: start index must be an integer, got {type(start).__name__}")
     
     return _slice_by_value_from(pairset, start)
+
+
+def _call_transitive_closure(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """Evaluate transitive_closure(edges, seeds) function."""
+    if len(ast.arguments) != 2:
+        raise RemyError(f"transitive_closure expects 2 arguments, got {len(ast.arguments)}")
+
+    edges = _evaluate(ast.arguments[0], field_indices)
+    seeds = _evaluate(ast.arguments[1], field_indices)
+
+    if not isinstance(edges, SortedSet):
+        raise RemyError(
+            f"transitive_closure: first argument (edges) must be a PairSet, got {type(edges).__name__}"
+        )
+
+    if isinstance(seeds, set):
+        seeds_labels = seeds
+    elif isinstance(seeds, SortedSet):
+        seeds_labels = pairset_to_labelset(seeds)
+    elif isinstance(seeds, ValueSet):
+        raise RemyError(
+            "transitive_closure: second argument (seeds) cannot be a ValueSet; "
+            "use a LabelSet or PairSet"
+        )
+    else:
+        raise RemyError(f"transitive_closure: unexpected seeds type {type(seeds).__name__}")
+
+    return _transitive_closure(edges, seeds_labels)
+
+
+def _transitive_closure(edges: PairSet, seeds_labels: LabelSet) -> PairSet:
+    """
+    Compute the transitive closure over a directed graph encoded as a PairSet.
+
+    Uses a semi-naive fixpoint algorithm to find all pairs (typed_value, seed_label)
+    where seed_label can reach typed_value in one or more hops via edges.
+
+    Non-reflexive: (a, a) is not included unless a cycle in edges creates it.
+    Terminates on cycles: frontier - closure subtraction prevents infinite loops.
+
+    Args:
+        edges: PairSet of directed edges; each element is ((type_id, destination), source_label)
+        seeds_labels: Set of label strings identifying the starting nodes
+
+    Returns:
+        PairSet of (destination, seed_label) pairs reachable in one or more hops
+    """
+    frontier = SortedSet(
+        (typed_value, label)
+        for typed_value, label in edges
+        if label in seeds_labels
+    )
+    closure = SortedSet(frontier)
+
+    while frontier:
+        new_pairs = _join_by_value_to_label(frontier, edges) - closure
+        closure |= new_pairs
+        frontier = new_pairs
+
+    return closure
 
 
 # ============================================================================

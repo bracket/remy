@@ -4,10 +4,11 @@ import pytest
 
 from remy.exceptions import RemyError
 from remy.notecard_index import null
-from remy.query.eval import evaluate_query
+from remy.query.eval import evaluate_query, _evaluate, _reachable_from
 from remy.query.ast_nodes import (
-    Literal, Identifier, Compare, In, And, Or, Not
+    Literal, Identifier, Compare, In, And, Or, Not, FunctionCall
 )
+from remy.query.set_types import create_pairset, pairset_to_labelset, ValueSet
 
 
 class MockNotecardIndex:
@@ -891,3 +892,175 @@ def test_evaluate_bare_identifier_typo_error():
     ast = Identifier('TAG')
     with pytest.raises(RemyError, match="does not reference a known field index"):
         evaluate_query(ast, field_indices)
+
+
+# ========== Tests for reachable_from ==========
+
+
+def _make_edges_index(pairs):
+    """
+    Build a MockNotecardIndex encoding directed graph edges.
+
+    Each pair (src, dst) becomes a mock index entry with value=dst, label=src,
+    so that create_pairset(index.find(...)) yields ((type_id, dst), src).
+    """
+    value_to_labels = {}
+    for src, dst in pairs:
+        value_to_labels.setdefault(dst, set()).add(src)
+    return MockNotecardIndex('EDGES', value_to_labels)
+
+
+def _make_seeds_index(seed_labels):
+    """
+    Build a MockNotecardIndex whose find() returns pairs with the given labels.
+
+    Each seed label 'x' becomes index entry value='x', label='x', so that
+    pairset_to_labelset projects to the seed labels.
+    """
+    value_to_labels = {label: {label} for label in seed_labels}
+    return MockNotecardIndex('SEEDS', value_to_labels)
+
+
+def test_reachable_from_linear_chain():
+    """Linear chain a→b→c→d, seeds={a}: result contains (b,a), (c,a), (d,a) only."""
+    edges = create_pairset([('b', 'a'), ('c', 'b'), ('d', 'c')])
+    result = _reachable_from(edges, {'a'})
+
+    expected = create_pairset([('b', 'a'), ('c', 'a'), ('d', 'a')])
+    assert result == expected
+
+
+def test_reachable_from_tree_branching():
+    """Tree: root→child1, root→child2, child1→grandchild; seeds={root}: all descendants returned."""
+    edges = create_pairset([
+        ('child1', 'root'),
+        ('child2', 'root'),
+        ('grandchild', 'child1'),
+    ])
+    result = _reachable_from(edges, {'root'})
+
+    expected = create_pairset([
+        ('child1', 'root'),
+        ('child2', 'root'),
+        ('grandchild', 'root'),
+    ])
+    assert result == expected
+
+
+def test_reachable_from_cycle_terminates():
+    """Cycle a→b→a, seeds={a}: result contains (b,a) and (a,a); computation terminates."""
+    edges = create_pairset([('b', 'a'), ('a', 'b')])
+    result = _reachable_from(edges, {'a'})
+
+    # 'a' can reach 'b' in one hop and reach 'a' again in two hops (via the cycle).
+    # The non-reflexive guarantee only means (a,a) is absent when no cycle creates it.
+    expected = create_pairset([('b', 'a'), ('a', 'a')])
+    assert result == expected
+
+
+def test_reachable_from_empty_edges():
+    """Empty edge set returns empty PairSet for any seeds."""
+    edges = create_pairset()
+    result = _reachable_from(edges, {'a'})
+
+    assert result == create_pairset()
+
+
+def test_reachable_from_seeds_not_in_edges():
+    """Seeds whose labels do not appear in edges return an empty PairSet."""
+    edges = create_pairset([('b', 'x'), ('c', 'y')])
+    result = _reachable_from(edges, {'a'})
+
+    assert result == create_pairset()
+
+
+def test_reachable_from_disconnected_components():
+    """Seeds spanning disconnected components: result is the union of each closure."""
+    edges = create_pairset([
+        ('b', 'a'), ('c', 'b'),   # component 1: a→b→c
+        ('y', 'x'), ('z', 'y'),   # component 2: x→y→z
+    ])
+    result = _reachable_from(edges, {'a', 'x'})
+
+    expected = create_pairset([
+        ('b', 'a'), ('c', 'a'),
+        ('y', 'x'), ('z', 'x'),
+    ])
+    assert result == expected
+
+
+def test_reachable_from_seeds_as_pairset():
+    """seeds argument as PairSet is projected to its label set."""
+    edges = create_pairset([('b', 'a'), ('c', 'b')])
+    seeds_pairset = create_pairset([('anything', 'a')])
+    result = _reachable_from(edges, seeds_pairset)
+
+    expected = create_pairset([('b', 'a'), ('c', 'a')])
+    assert result == expected
+
+
+def test_reachable_from_wrong_arg_count():
+    """Wrong argument count (too few or too many) raises RemyError."""
+    edges_index = _make_edges_index([('a', 'b')])
+    field_indices = {'EDGES': edges_index}
+
+    # Too few arguments
+    ast = FunctionCall('reachable_from', [Identifier('edges')])
+    with pytest.raises(RemyError, match="reachable_from expects 2 arguments"):
+        _evaluate(ast, field_indices)
+
+    # Too many arguments
+    ast = FunctionCall('reachable_from', [
+        Identifier('edges'), Identifier('edges'), Identifier('edges')
+    ])
+    with pytest.raises(RemyError, match="reachable_from expects 2 arguments"):
+        _evaluate(ast, field_indices)
+
+
+def test_reachable_from_edges_not_pairset():
+    """Non-PairSet edges argument raises RemyError."""
+    tags_index = MockNotecardIndex('TAGS', {'foo': {'card1'}})
+    edges_index = _make_edges_index([('a', 'b')])
+    field_indices = {'TAGS': tags_index, 'EDGES': edges_index}
+
+    # values(tags) returns a ValueSet, not a PairSet - use as edges to trigger error
+    ast = FunctionCall('reachable_from', [
+        FunctionCall('values', [Identifier('tags')]),
+        Identifier('edges'),
+    ])
+    with pytest.raises(RemyError, match="reachable_from: first argument .edges. must be a PairSet"):
+        _evaluate(ast, field_indices)
+
+
+def test_reachable_from_seeds_is_valueset():
+    """ValueSet seeds raises RemyError."""
+    edges_index = _make_edges_index([('a', 'b')])
+    tags_index = MockNotecardIndex('TAGS', {'foo': {'card1'}})
+    field_indices = {'EDGES': edges_index, 'TAGS': tags_index}
+
+    # values(tags) returns a ValueSet
+    ast = FunctionCall('reachable_from', [
+        Identifier('edges'),
+        FunctionCall('values', [Identifier('tags')]),
+    ])
+    with pytest.raises(RemyError, match="reachable_from: second argument .seeds. must be a PairSet or LabelSet"):
+        _evaluate(ast, field_indices)
+
+
+def test_reachable_from_via_evaluator_dispatch():
+    """End-to-end: reachable_from dispatched through _evaluate with mock indices."""
+    # Graph: a→b→c
+    edges_index = _make_edges_index([('a', 'b'), ('b', 'c')])
+    seeds_index = _make_seeds_index(['a'])
+    field_indices = {'EDGES': edges_index, 'SEEDS': seeds_index}
+
+    ast = FunctionCall('reachable_from', [Identifier('edges'), Identifier('seeds')])
+    result = _evaluate(ast, field_indices)
+
+    labels = pairset_to_labelset(result)
+    # 'a' should be the label in all result pairs (the seed)
+    assert labels == {'a'}
+    # The nodes reachable from 'a' are 'b' and 'c'
+    reachable_nodes = {v for (_, v), _ in result}
+    assert reachable_nodes == {'b', 'c'}
+

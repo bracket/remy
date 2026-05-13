@@ -741,8 +741,8 @@ def _evaluate_function_call(ast: FunctionCall, field_indices: Dict[str, 'Notecar
         return _call_slice_by_label_from(ast, field_indices)
     elif func_name == 'slice_by_value_from':
         return _call_slice_by_value_from(ast, field_indices)
-    elif func_name == 'transitive_closure':
-        return _call_transitive_closure(ast, field_indices)
+    elif func_name == 'reachable_from':
+        return _call_reachable_from(ast, field_indices)
     else:
         raise RemyError(f"Unknown function: {ast.function_name}")
 
@@ -957,37 +957,25 @@ def _call_slice_by_value_from(ast: FunctionCall, field_indices: Dict[str, 'Notec
     return _slice_by_value_from(pairset, start)
 
 
-def _call_transitive_closure(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
-    """Evaluate transitive_closure(edges, seeds) function."""
+def _call_reachable_from(ast: FunctionCall, field_indices: Dict[str, 'NotecardIndex']) -> PairSet:
+    """Evaluate reachable_from(edges, seeds) function."""
     if len(ast.arguments) != 2:
-        raise RemyError(f"transitive_closure expects 2 arguments, got {len(ast.arguments)}")
+        raise RemyError(f"reachable_from expects 2 arguments, got {len(ast.arguments)}")
 
     edges = _evaluate(ast.arguments[0], field_indices)
     seeds = _evaluate(ast.arguments[1], field_indices)
 
     if not isinstance(edges, SortedSet):
         raise RemyError(
-            f"transitive_closure: first argument (edges) must be a PairSet, got {type(edges).__name__}"
+            f"reachable_from: first argument (edges) must be a PairSet, got {type(edges).__name__}"
         )
 
-    if isinstance(seeds, set):
-        seeds_labels = seeds
-    elif isinstance(seeds, SortedSet):
-        seeds_labels = pairset_to_labelset(seeds)
-    elif isinstance(seeds, ValueSet):
-        raise RemyError(
-            "transitive_closure: second argument (seeds) cannot be a ValueSet; "
-            "use a LabelSet or PairSet"
-        )
-    else:
-        raise RemyError(f"transitive_closure: unexpected seeds type {type(seeds).__name__}")
-
-    return _transitive_closure(edges, seeds_labels)
+    return _reachable_from(edges, seeds)
 
 
-def _transitive_closure(edges: PairSet, seeds_labels: LabelSet) -> PairSet:
+def _reachable_from(edges: PairSet, seeds: Union[PairSet, LabelSet]) -> PairSet:
     """
-    Compute the transitive closure over a directed graph encoded as a PairSet.
+    Compute the set of nodes reachable from seeds over a directed graph encoded as a PairSet.
 
     Uses a semi-naive fixpoint algorithm to find all pairs (typed_value, seed_label)
     where seed_label can reach typed_value in one or more hops via edges.
@@ -997,11 +985,21 @@ def _transitive_closure(edges: PairSet, seeds_labels: LabelSet) -> PairSet:
 
     Args:
         edges: PairSet of directed edges; each element is ((type_id, destination), source_label)
-        seeds_labels: Set of label strings identifying the starting nodes
+        seeds: LabelSet of starting node labels, or a PairSet which is projected to its labels
 
     Returns:
         PairSet of (destination, seed_label) pairs reachable in one or more hops
     """
+    if isinstance(seeds, SortedSet):
+        seeds_labels = pairset_to_labelset(seeds)
+    elif isinstance(seeds, set):
+        seeds_labels = seeds
+    else:
+        raise RemyError(
+            f"reachable_from: second argument (seeds) must be a PairSet or LabelSet, "
+            f"got {type(seeds).__name__}"
+        )
+
     frontier = SortedSet(
         (typed_value, label)
         for typed_value, label in edges

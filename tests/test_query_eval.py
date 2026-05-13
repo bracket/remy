@@ -4,7 +4,7 @@ import pytest
 
 from remy.exceptions import RemyError
 from remy.notecard_index import null
-from remy.query.eval import evaluate_query, _evaluate, _transitive_closure
+from remy.query.eval import evaluate_query, _evaluate, _reachable_from
 from remy.query.ast_nodes import (
     Literal, Identifier, Compare, In, And, Or, Not, FunctionCall
 )
@@ -894,7 +894,7 @@ def test_evaluate_bare_identifier_typo_error():
         evaluate_query(ast, field_indices)
 
 
-# ========== Tests for transitive_closure ==========
+# ========== Tests for reachable_from ==========
 
 
 def _make_edges_index(pairs):
@@ -921,23 +921,23 @@ def _make_seeds_index(seed_labels):
     return MockNotecardIndex('SEEDS', value_to_labels)
 
 
-def test_transitive_closure_linear_chain():
+def test_reachable_from_linear_chain():
     """Linear chain a→b→c→d, seeds={a}: result contains (b,a), (c,a), (d,a) only."""
     edges = create_pairset([('b', 'a'), ('c', 'b'), ('d', 'c')])
-    result = _transitive_closure(edges, {'a'})
+    result = _reachable_from(edges, {'a'})
 
     expected = create_pairset([('b', 'a'), ('c', 'a'), ('d', 'a')])
     assert result == expected
 
 
-def test_transitive_closure_tree_branching():
+def test_reachable_from_tree_branching():
     """Tree: root→child1, root→child2, child1→grandchild; seeds={root}: all descendants returned."""
     edges = create_pairset([
         ('child1', 'root'),
         ('child2', 'root'),
         ('grandchild', 'child1'),
     ])
-    result = _transitive_closure(edges, {'root'})
+    result = _reachable_from(edges, {'root'})
 
     expected = create_pairset([
         ('child1', 'root'),
@@ -947,10 +947,10 @@ def test_transitive_closure_tree_branching():
     assert result == expected
 
 
-def test_transitive_closure_cycle_terminates():
+def test_reachable_from_cycle_terminates():
     """Cycle a→b→a, seeds={a}: result contains (b,a) and (a,a); computation terminates."""
     edges = create_pairset([('b', 'a'), ('a', 'b')])
-    result = _transitive_closure(edges, {'a'})
+    result = _reachable_from(edges, {'a'})
 
     # 'a' can reach 'b' in one hop and reach 'a' again in two hops (via the cycle).
     # The non-reflexive guarantee only means (a,a) is absent when no cycle creates it.
@@ -958,29 +958,29 @@ def test_transitive_closure_cycle_terminates():
     assert result == expected
 
 
-def test_transitive_closure_empty_edges():
+def test_reachable_from_empty_edges():
     """Empty edge set returns empty PairSet for any seeds."""
     edges = create_pairset()
-    result = _transitive_closure(edges, {'a'})
+    result = _reachable_from(edges, {'a'})
 
     assert result == create_pairset()
 
 
-def test_transitive_closure_seeds_not_in_edges():
+def test_reachable_from_seeds_not_in_edges():
     """Seeds whose labels do not appear in edges return an empty PairSet."""
     edges = create_pairset([('b', 'x'), ('c', 'y')])
-    result = _transitive_closure(edges, {'a'})
+    result = _reachable_from(edges, {'a'})
 
     assert result == create_pairset()
 
 
-def test_transitive_closure_disconnected_components():
+def test_reachable_from_disconnected_components():
     """Seeds spanning disconnected components: result is the union of each closure."""
     edges = create_pairset([
         ('b', 'a'), ('c', 'b'),   # component 1: a→b→c
         ('y', 'x'), ('z', 'y'),   # component 2: x→y→z
     ])
-    result = _transitive_closure(edges, {'a', 'x'})
+    result = _reachable_from(edges, {'a', 'x'})
 
     expected = create_pairset([
         ('b', 'a'), ('c', 'a'),
@@ -989,69 +989,72 @@ def test_transitive_closure_disconnected_components():
     assert result == expected
 
 
-def test_transitive_closure_wrong_arg_count():
+def test_reachable_from_seeds_as_pairset():
+    """seeds argument as PairSet is projected to its label set."""
+    edges = create_pairset([('b', 'a'), ('c', 'b')])
+    seeds_pairset = create_pairset([('anything', 'a')])
+    result = _reachable_from(edges, seeds_pairset)
+
+    expected = create_pairset([('b', 'a'), ('c', 'a')])
+    assert result == expected
+
+
+def test_reachable_from_wrong_arg_count():
     """Wrong argument count (too few or too many) raises RemyError."""
     edges_index = _make_edges_index([('a', 'b')])
     field_indices = {'EDGES': edges_index}
 
     # Too few arguments
-    ast = FunctionCall('transitive_closure', [Identifier('edges')])
-    with pytest.raises(RemyError, match="transitive_closure expects 2 arguments"):
+    ast = FunctionCall('reachable_from', [Identifier('edges')])
+    with pytest.raises(RemyError, match="reachable_from expects 2 arguments"):
         _evaluate(ast, field_indices)
 
     # Too many arguments
-    ast = FunctionCall('transitive_closure', [
+    ast = FunctionCall('reachable_from', [
         Identifier('edges'), Identifier('edges'), Identifier('edges')
     ])
-    with pytest.raises(RemyError, match="transitive_closure expects 2 arguments"):
+    with pytest.raises(RemyError, match="reachable_from expects 2 arguments"):
         _evaluate(ast, field_indices)
 
 
-def test_transitive_closure_edges_not_pairset():
+def test_reachable_from_edges_not_pairset():
     """Non-PairSet edges argument raises RemyError."""
-    # Use a LabelSet-returning expression: labels() of something
-    # The simplest way: make edges evaluate to a LabelSet by using an index
-    # that we then wrap in labels(). But that requires a complex AST.
-    # Instead, directly test _call_transitive_closure via _evaluate with
-    # seeds being a ValueSet-producing expression... actually let's test
-    # by passing a LabelSet index as edges.
-    # Identifiers evaluate to PairSets, so we test via values() which yields ValueSet.
     tags_index = MockNotecardIndex('TAGS', {'foo': {'card1'}})
     edges_index = _make_edges_index([('a', 'b')])
     field_indices = {'TAGS': tags_index, 'EDGES': edges_index}
 
     # values(tags) returns a ValueSet, not a PairSet - use as edges to trigger error
-    ast = FunctionCall('transitive_closure', [
+    ast = FunctionCall('reachable_from', [
         FunctionCall('values', [Identifier('tags')]),
         Identifier('edges'),
     ])
-    with pytest.raises(RemyError, match="transitive_closure: first argument .edges. must be a PairSet"):
+    with pytest.raises(RemyError, match="reachable_from: first argument .edges. must be a PairSet"):
         _evaluate(ast, field_indices)
 
 
-def test_transitive_closure_seeds_is_valueset():
+def test_reachable_from_seeds_is_valueset():
     """ValueSet seeds raises RemyError."""
     edges_index = _make_edges_index([('a', 'b')])
     tags_index = MockNotecardIndex('TAGS', {'foo': {'card1'}})
     field_indices = {'EDGES': edges_index, 'TAGS': tags_index}
 
     # values(tags) returns a ValueSet
-    ast = FunctionCall('transitive_closure', [
+    ast = FunctionCall('reachable_from', [
         Identifier('edges'),
         FunctionCall('values', [Identifier('tags')]),
     ])
-    with pytest.raises(RemyError, match="transitive_closure: second argument .seeds. cannot be a ValueSet"):
+    with pytest.raises(RemyError, match="reachable_from: second argument .seeds. must be a PairSet or LabelSet"):
         _evaluate(ast, field_indices)
 
 
-def test_transitive_closure_via_evaluator_dispatch():
-    """End-to-end: transitive_closure dispatched through _evaluate with mock indices."""
+def test_reachable_from_via_evaluator_dispatch():
+    """End-to-end: reachable_from dispatched through _evaluate with mock indices."""
     # Graph: a→b→c
     edges_index = _make_edges_index([('a', 'b'), ('b', 'c')])
     seeds_index = _make_seeds_index(['a'])
     field_indices = {'EDGES': edges_index, 'SEEDS': seeds_index}
 
-    ast = FunctionCall('transitive_closure', [Identifier('edges'), Identifier('seeds')])
+    ast = FunctionCall('reachable_from', [Identifier('edges'), Identifier('seeds')])
     result = _evaluate(ast, field_indices)
 
     labels = pairset_to_labelset(result)

@@ -350,11 +350,6 @@ def format_valueset(valueset, limit=None, reverse=False):
     return '\n'.join(lines) + ('\n' if lines else '')
 
 
-def count_nonempty_lines(text):
-    """Return the number of non-empty lines in text."""
-    return len([l for l in text.splitlines() if l])
-
-
 def get_sort_key_for_card(card, cache, order_by_key):
     """
     Build a sort key for a notecard.
@@ -648,7 +643,14 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
         
         try:
             raw_result = execute_query_raw(cache, final_query)
-            
+
+            if count:
+                cnt = len(raw_result)
+                if limit is not None:
+                    cnt = min(cnt, limit)
+                print(cnt)
+                return
+
             # Format based on set type
             if isinstance(raw_result, set):
                 # LabelSet
@@ -662,10 +664,6 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
             else:
                 raise click.UsageError(f"Unexpected set type: {type(raw_result).__name__}")
             
-            if count:
-                print(count_nonempty_lines(output))
-                return
-
             print(output, end='')
             return
             
@@ -741,12 +739,20 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
                 print(output)
             else:
                 # Use field-specific raw (CSV) formatting
-                output = format_notecards_fields_raw(unique_cards, field_names, cache)
-
                 if count:
-                    print(count_nonempty_lines(output))
+                    import itertools
+                    cnt = 0
+                    for card in unique_cards:
+                        field_values = extract_field_values(card, field_names, cache)
+                        value_lists = [
+                            field_values.get(fn, []) or ['']
+                            for fn in field_names
+                        ]
+                        cnt += sum(1 for _ in itertools.product(*value_lists))
+                    print(cnt)
                     return
 
+                output = format_notecards_fields_raw(unique_cards, field_names, cache)
                 print(output, end='')
         except RemyError as e:
             raise click.ClickException(str(e))

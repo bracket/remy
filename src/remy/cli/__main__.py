@@ -566,8 +566,10 @@ def main(ctx, cache):
               help='Limit the number of results returned (applied after sorting)')
 @click.option('--fields', 'fields_option',
               help='Comma-separated list of field names to extract (supports @primary-label, @label, @title/@first-block)')
+@click.option('--count', 'count', is_flag=True,
+              help='Print the count of matching results instead of the full output')
 @click.pass_context
-def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, order_by_key, reverse_order, limit, fields_option):
+def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, order_by_key, reverse_order, limit, fields_option, count):
     """Query and filter notecards.
 
     Results are returned in deterministic order. By default, notecards are sorted
@@ -580,6 +582,8 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
       - json: JSON array of notecard texts
       - set: Raw set output (PairSet as CSV, LabelSet/ValueSet as lines)
 
+    Use --count to print the number of matching results instead of full output.
+
     Examples:
       remy --cache /path/to/notes query --all
       remy --cache /path/to/notes query "tag = 'inbox'"
@@ -589,11 +593,17 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
       remy --cache /path/to/notes query --all --order-by created --limit 1
       remy --cache /path/to/notes query "priority > 5" --format set --limit 10
       remy --cache /path/to/notes query "values(tag)" --format set
+      remy --cache /path/to/notes query --all --count
+      remy --cache /path/to/notes query "tag = 'inbox'" --count
     """
     cache = ctx.obj.get('cache')
     
     if cache is None:
         raise click.UsageError("The --cache option is required for this command.")
+
+    # Validate incompatible option combinations
+    if count and pretty_print:
+        raise click.UsageError("--count is not compatible with --pretty-print")
 
     # Validate incompatible option combinations for --format set
     if output_format.lower() == 'set':
@@ -633,7 +643,14 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
         
         try:
             raw_result = execute_query_raw(cache, final_query)
-            
+
+            if count:
+                cnt = len(raw_result)
+                if limit is not None:
+                    cnt = min(cnt, limit)
+                print(cnt)
+                return
+
             # Format based on set type
             if isinstance(raw_result, set):
                 # LabelSet
@@ -709,7 +726,11 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
                 import json
                 # Use field-specific JSON formatting
                 result = format_notecards_fields_json(unique_cards, field_names, cache)
-                
+
+                if count:
+                    print(len(result))
+                    return
+
                 if pretty_print:
                     output = json.dumps(result, ensure_ascii=False, indent=2)
                 else:
@@ -718,12 +739,29 @@ def query(ctx, query_expr, where_clause, show_all, output_format, pretty_print, 
                 print(output)
             else:
                 # Use field-specific raw (CSV) formatting
+                if count:
+                    import itertools
+                    cnt = 0
+                    for card in unique_cards:
+                        field_values = extract_field_values(card, field_names, cache)
+                        value_lists = [
+                            field_values.get(fn, []) or ['']
+                            for fn in field_names
+                        ]
+                        cnt += sum(1 for _ in itertools.product(*value_lists))
+                    print(cnt)
+                    return
+
                 output = format_notecards_fields_raw(unique_cards, field_names, cache)
                 print(output, end='')
         except RemyError as e:
             raise click.ClickException(str(e))
     else:
         # Standard full notecard output
+        if count:
+            print(len(unique_cards))
+            return
+
         if output_format.lower() == 'json':
             import json
             # Collect full text of each notecard

@@ -16,6 +16,7 @@ dependencies = [
     "sortedcontainers",
     "click",
     "python-dateutil",
+    "pytz",
     "fastapi",
     "uvicorn",
     "httpx",

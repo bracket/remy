@@ -582,7 +582,20 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
     # Use NotecardIndex.find() to get matching pairs
     # The NotecardIndex already returns (value, label) pairs
     # We need to convert them to PairSets with type prefixes
-    
+
+    def _type_mismatch_error():
+        indexed_type_names = ', '.join(sorted(t.__name__ for t in index.indexed_types))
+        return InvalidComparison(
+            f"Cannot compare {type(value).__name__} against field '{field_name}' "
+            f"which contains {indexed_type_names} values."
+        )
+
+    # For ordering operators, verify that the query value's type matches the index
+    if ast.operator in ('<', '<=', '>', '>='):
+        indexed_types = index.indexed_types
+        if indexed_types and type(value) not in indexed_types:
+            raise _type_mismatch_error()
+
     if ast.operator == '=':
         # Exact match: low=value, high=value
         return create_pairset(index.find(low=value, high=value))
@@ -591,8 +604,11 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
         # Strictly less than: all values up to (but not including) value
         result = create_pairset()
         for field_value, label in index.find(low=null, high=value):
-            if field_value < value:
-                result.add(((id(type(field_value)), field_value), label))
+            try:
+                if field_value < value:
+                    result.add(((id(type(field_value)), field_value), label))
+            except TypeError:
+                continue
         return result
     
     elif ast.operator == '<=':
@@ -603,8 +619,11 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
         # Strictly greater than: all values from value onwards, excluding value
         result = create_pairset()
         for field_value, label in index.find(low=value, high=null):
-            if field_value > value:
-                result.add(((id(type(field_value)), field_value), label))
+            try:
+                if field_value > value:
+                    result.add(((id(type(field_value)), field_value), label))
+            except TypeError:
+                continue
         return result
     
     elif ast.operator == '>=':

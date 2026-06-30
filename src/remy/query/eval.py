@@ -608,7 +608,7 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
                 if field_value < value:
                     result.add(((id(type(field_value)), field_value), label))
             except TypeError:
-                raise _type_mismatch_error()
+                continue
         return result
     
     elif ast.operator == '<=':
@@ -623,7 +623,7 @@ def _evaluate_compare(ast: Compare, field_indices: Dict[str, 'NotecardIndex']) -
                 if field_value > value:
                     result.add(((id(type(field_value)), field_value), label))
             except TypeError:
-                raise _type_mismatch_error()
+                continue
         return result
     
     elif ast.operator == '>=':

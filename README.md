@@ -60,6 +60,41 @@ Lap swim ideas
 
 They `remy` command line tool can be used to manage and search notecards in a directory of text files.
 
+## Query Language
+
+Remy's query language lets you filter notecards by their metadata fields and return the matching notecards. Queries are expressed as simple expressions that reference field values using familiar operators.
+
+### Basic Queries
+
+Match notecards where a field equals a specific value:
+
+```text
+tags='work'
+status='active'
+```
+
+Comparison operators let you write range queries:
+
+```text
+priority<=2
+created>'2024-01-01'::date
+```
+
+### Combining Conditions
+
+Use `AND`, `OR`, and `NOT` to build more precise filters:
+
+```text
+tags='work' AND status='active'
+tags='work' OR tags='personal'
+NOT status='completed'
+```
+
+The query language also supports set operators, macros, slicing, chain navigation, and other advanced capabilities. See [`docs/query_language_guide.md`](docs/query_language_guide.md) for the full reference.
+
+Queries can be run from the command line with `remy query` or through the MCP `query_notecards` tool (described in the [MCP Server](#mcp-server) section).
+
+
 ## HTTP API
 
 The Remy HTTP API (FastAPI) exposes read-only notecard operations as JSON endpoints.

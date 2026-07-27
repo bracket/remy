@@ -1,0 +1,14 @@
+registry: ghcr.io/bracket
+images:
+  service-remy:
+    dockerfile: images/service-remy/Dockerfile
+    version: "0.1.0"
+    dependencies:
+      - base-service-python
+    architectures:
+      - amd64
+      - arm64
+    build-args:
+      REMY_VERSION: "0.1.0"
+    build-secrets:
+      PIP_EXTRA_INDEX_URL: "${..images.build.pip_extra_index_url}"

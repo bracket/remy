@@ -135,7 +135,7 @@ Remy consists of four main components:
            ▼                           ▼
 ┌─────────────────────┐    ┌──────────────────────┐
 │   CLI Interface     │    │   Web Interface      │
-│   (Click-based)     │    │   (Flask + Vue.js)   │
+│   (Click-based)     │    │   (FastAPI)          │
 └─────────────────────┘    └──────────────────────┘
 ```
 
@@ -304,54 +304,7 @@ Uses Click for command parsing with:
 
 ---
 
-## Web Interface
 
-The web interface consists of a Flask backend and Vue.js frontend.
-
-### Flask Backend (`www/app.py`)
-
-**API Endpoints**:
-```python
-GET  /api/notecard/<card_label>    # Get raw notecard content
-```
-
-**Notecard Rendering**:
-- Parses notecard content into AST
-- Converts AST to HTML
-- Special handling for `note://` references (converts to clickable cards)
-- Special handling for `rfc822msgid://` (links to Gmail)
-
-**Design Decisions**:
-- API returns raw content; frontend handles rendering
-- Flask serves Vite-built static files in production
-- Development mode uses `REMY_VITE_URL` for proxying to Vite dev server
-
-### Vue.js Frontend (`vite/vite/src/`)
-
-**Components**:
-- `RemyCard.vue`: Displays a single notecard
-- `HomeView.vue`: Main view for browsing notecards
-
-**Router** (`router/index.ts`):
-- Currently minimal, room for expansion with search, edit views
-
-**API Client** (`api.ts`):
-```typescript
-async function get_card(label: string) {
-    const endpoint = `${REMY_API_ENDPOINT}/notecard/${label}`;
-    return await fetch(endpoint).then(r => r.json());
-}
-```
-
-**Parser** (`parser.ts`):
-- Client-side implementation of notecard grammar
-- Mirrors Python grammar for consistent rendering
-- Can parse content without backend calls
-
-**Development Setup**:
-- Vite dev server on port 3000
-- Proxies API calls to Flask backend on port 5000
-- Hot module replacement for rapid development
 
 ---
 
@@ -509,14 +462,7 @@ index.find(low='2024-01-01', high='2024-12-31')
    - IN operator for membership testing
    - Lark-based parser with full AST
 
-5. **Web Interface**
-   - Flask API backend
-   - Vue.js + TypeScript frontend
-   - Notecard display component
-   - HTML rendering of content
-   - Special handling for `note://` references
-
-6. **Configuration**
+5. **Configuration**
    - `.remy/config.py` support
    - Custom field parsers
    - Dynamic loading
@@ -712,14 +658,9 @@ src/remy/
 - **Python 3.12+**: Core language
 - **Lark**: Parser generator for query language
 - **sortedcontainers**: Efficient sorted data structures
-- **Flask**: Web framework
 - **Click**: CLI framework
+- **FastAPI**: HTTP API framework
 - **pytest**: Testing framework
-
-### Frontend
-- **Vue.js 3**: UI framework (Composition API)
-- **TypeScript**: Type-safe JavaScript
-- **Vite**: Build tool and dev server
 
 ### Infrastructure
 - **Docker**: Containerization

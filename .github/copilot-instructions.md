@@ -32,11 +32,10 @@ More content...
 
 ### Architecture Overview
 
-The project consists of three main components:
+The project consists of two main components:
 
 1. **Python Backend** (`src/remy/`): Core notecard parsing, indexing, caching, and query system
 2. **CLI Tool** (`src/remy/cli/`): Command-line interface for managing notecards
-3. **Web Interface**: Flask backend (`src/remy/www/`) with Vue.js frontend (`vite/vite/src/`)
 
 ---
 
@@ -61,7 +60,6 @@ from pathlib import Path
 import functools
 
 # Third-party imports
-from flask import Flask
 from sortedcontainers import SortedSet
 
 # Local imports
@@ -115,14 +113,6 @@ pytest -v
 pytest tests/test_query.py::test_query_tokenizer
 ```
 
-### Flask
-
-**Application Factory Pattern**:
-- Use `create_app()` function to create Flask application instances
-- Configure the app with static and template folders
-
-**Route Conventions**:
-- API routes are prefixed with `/api/`
 - Return JSON for API endpoints
 - Use appropriate HTTP status codes
 
@@ -176,32 +166,9 @@ npm run build    # Build for production (runs vue-tsc first)
 npm run preview  # Preview production build
 ```
 
-**Configuration**:
-- Vue plugin enabled
-- API proxy to Flask backend at port 5000
 
 ### Docker
 
-**Development Setup**:
-- Use `dev-docker-compose.yml` for development with hot reloading
-- Vite sources are bind-mounted for live updates
-- Node modules are mounted separately for performance
-
-**Production Build**:
-- Use `docker-compose.yml` for production builds
-- Based on Alpine Linux with asdf for version management
-- Builds Node.js and Python from source
-
-**Commands**:
-```bash
-# Development
-cd vite
-docker-compose -f dev-docker-compose.yml up
-
-# Production build
-cd vite
-docker-compose up
-```
 
 ### Custom Parsers
 
@@ -268,48 +235,6 @@ docker-compose up
    python -c "from remy import Notecard, NotecardCache; print('OK')"
    ```
 
-### Frontend Development Setup
-
-**Prerequisites**:
-- Node.js 21.x or later
-- npm (Node package manager)
-
-**Installation Steps**:
-
-1. Navigate to the frontend directory:
-   ```bash
-   cd vite/vite
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-   The development server runs on http://localhost:3000
-
-4. Build for production:
-   ```bash
-   npm run build
-   ```
-
-### Docker Setup (Alternative)
-
-For containerized development:
-
-1. Navigate to the vite directory:
-   ```bash
-   cd vite
-   ```
-
-2. Start development environment:
-   ```bash
-   docker-compose -f dev-docker-compose.yml up
-   ```
 
 ---
 
@@ -343,31 +268,7 @@ src/remy/
 │   ├── grammar.py        # Query tokenizer and grammar
 │   ├── parser.py         # Query parser using parser combinators
 │   └── payer.py          # Parser combinator library
-│
-└── www/                  # Web application
-    ├── __main__.py       # Web server entry point using Click
-    ├── app.py            # Flask application and API routes
-    └── static/           # Static files (Vite build output)
 ```
-
-### Frontend (`vite/vite/src/`)
-
-```
-vite/vite/src/
-├── App.vue               # Root Vue component with router-view
-├── api.ts                # API client for Flask backend
-├── main.ts               # Application entry point
-├── parser.ts             # Client-side notecard parser (mirrors Python grammar)
-├── style.css             # Global styles
-├── vite-env.d.ts         # Vite type declarations
-│
-├── assets/               # Static assets
-│   └── styles/           # Stylesheets
-│       └── base.css      # Base styles
-│
-├── components/           # Reusable Vue components
-│   ├── HelloWorld.vue    # Example component
-│   └── RemyCard.vue      # Notecard display component
 │
 ├── router/               # Vue Router configuration
 │   └── index.ts          # Route definitions
@@ -544,29 +445,6 @@ The `--cache` option specifies the directory containing notecard files.
 
 Environment variable: `REMY_CACHE` can be set instead of passing `--cache`.
 
-### Running the Web Interface
-
-1. Start the Flask backend:
-   ```bash
-   python -m remy.www --cache /path/to/notecards/directory --host 0.0.0.0
-   ```
-   The Flask server runs on http://localhost:5000
-
-2. Start the Vite development server (in a separate terminal):
-   ```bash
-   cd vite/vite
-   npm run dev
-   ```
-   The frontend runs on http://localhost:3000 and proxies API calls to Flask.
-
-### Development with Docker
-
-```bash
-cd vite
-docker-compose -f dev-docker-compose.yml up
-```
-
-This starts the Vite development server with hot reloading.
 
 ### Common Development Tasks
 
@@ -577,12 +455,6 @@ This starts the Vite development server with hot reloading.
 4. Update `parse_content()` in `src/remy/ast/parse.py` to handle the new node
 5. Add tests in `tests/`
 
-**Adding a new API endpoint**:
-1. Add a route function in `src/remy/www/app.py`
-2. Decorate with `@app.route('/api/...')`
-3. Return JSON data
-4. Update frontend API client in `vite/vite/src/api.ts`
-
 **Adding a new CLI command**:
 1. Add a Click command in `src/remy/cli/__main__.py`
 2. Use `@click.command` and `@click.option` decorators
@@ -590,5 +462,4 @@ This starts the Vite development server with hot reloading.
 
 **Modifying the notecard grammar**:
 1. Update patterns in `src/remy/grammar.py`
-2. Update the TypeScript mirror in `vite/vite/src/parser.ts`
-3. Add tests for new patterns
+2. Add tests for new patterns

@@ -22,7 +22,7 @@ The API does not currently use URL versioning. If versioning becomes necessary i
 python -m remy.api
 ```
 
-`remy.api` is the new FastAPI module introduced by this specification (distinct from the existing `remy.www` Flask application). The cache location is configured via the `REMY_CACHE` environment variable or a server-startup argument.
+`remy.api` is the FastAPI module for the HTTP API server. The cache location is configured via the `REMY_CACHE` environment variable or a server-startup argument.
 
 ---
 

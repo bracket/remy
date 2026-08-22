@@ -5,7 +5,9 @@ Usage:
     python -m remy.api [--cache PATH] [--host HOST] [--port PORT]
 
 The cache location can be provided via the --cache argument or the REMY_CACHE
-environment variable.
+environment variable. The bind host can be provided via --host or the
+REMY_API_HOST environment variable (default: 127.0.0.1). The bind port can be
+provided via --port or the REMY_API_PORT environment variable (default: 42625).
 """
 
 import argparse
@@ -26,8 +28,17 @@ def main():
         default=os.environ.get("REMY_CACHE", ""),
         help="Location of the Remy notecard cache (default: $REMY_CACHE)",
     )
-    parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=42625, help="Bind port (default: 42625)")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("REMY_API_HOST", "127.0.0.1"),
+        help="Bind host (default: $REMY_API_HOST, fallback 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("REMY_API_PORT", "42625")),
+        help="Bind port (default: $REMY_API_PORT, fallback 42625)",
+    )
     args = parser.parse_args()
 
     cache_path = args.cache

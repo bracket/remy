@@ -547,6 +547,9 @@ def main(ctx, cache):
     else:
         ctx.obj['cache'] = None
 
+    # Record whether --cache was explicitly provided on the command line
+    ctx.obj['cache_from_cli'] = ctx.get_parameter_source('cache') == click.core.ParameterSource.COMMANDLINE
+
 
 @main.command()
 @click.argument('query_expr', required=False)
@@ -1446,6 +1449,95 @@ def _format_ast_node(node):
     else:
         # Fallback for other node types
         return str(node)
+
+
+@main.group()
+@click.pass_context
+def api(ctx):
+    """Server management for the API."""
+    pass
+
+
+@api.command('serve')
+@click.option('--host', envvar='REMY_API_HOST', default='127.0.0.1',
+              help='Bind host (default: $REMY_API_HOST, fallback 127.0.0.1)')
+@click.option('--port', type=int, envvar='REMY_API_PORT', default=42625,
+              help='Bind port (default: $REMY_API_PORT, fallback 42625)')
+@click.option('--cache', envvar='REMY_CACHE',
+              help='Location of Remy notecard cache (default: $REMY_CACHE)')
+@click.pass_context
+def api_serve(ctx, host, port, cache):
+    """Start the Remy API server.
+
+    Delegates to remy.api.__main__.main() after writing resolved
+    configuration into environment variables.
+    """
+    import os
+
+    # Conflict check: top-level --cache flag AND api serve --cache flag
+    if ctx.obj.get('cache_from_cli') and ctx.get_parameter_source('cache') == click.core.ParameterSource.COMMANDLINE:
+        raise click.UsageError(
+            "The --cache option cannot be specified both at the top level "
+            "and in 'api serve'. Use one or the other."
+        )
+
+    # Resolve effective cache: prefer api serve --cache flag,
+    # then top-level --cache/REMY_CACHE from ctx.obj, then REMY_CACHE env
+    effective_cache = cache
+    if not effective_cache:
+        top_cache_obj = ctx.obj.get('cache')
+        if top_cache_obj is not None:
+            effective_cache = str(top_cache_obj.url)
+    if not effective_cache:
+        effective_cache = os.environ.get('REMY_CACHE', '')
+
+    # Write resolved values into environment
+    os.environ['REMY_API_HOST'] = host
+    os.environ['REMY_API_PORT'] = str(port)
+    if effective_cache:
+        os.environ['REMY_CACHE'] = effective_cache
+    elif 'REMY_CACHE' in os.environ:
+        pass  # keep existing env value
+    else:
+        # No cache from any source — let the delegated main() fail with exit 1
+        pass
+
+    # Delegate to the API server main()
+    from remy.api.__main__ import main as api_main
+    api_main()
+
+
+@main.group()
+@click.pass_context
+def mcp(ctx):
+    """Server management for the MCP server."""
+    pass
+
+
+@mcp.command('serve')
+@click.option('--host', envvar='REMY_MCP_HOST', default='localhost',
+              help='Bind host (default: $REMY_MCP_HOST, fallback localhost)')
+@click.option('--port', type=int, envvar='REMY_MCP_PORT', default=42626,
+              help='Bind port (default: $REMY_MCP_PORT, fallback 42626)')
+@click.option('--api-url', envvar='REMY_API_URL', default='http://localhost:42625',
+              help='Base URL of the Remy API backend (default: $REMY_API_URL, fallback http://localhost:42625)')
+@click.pass_context
+def mcp_serve(ctx, host, port, api_url):
+    """Start the Remy MCP server.
+
+    Delegates to remy.mcp.__main__.main() after writing resolved
+    configuration into environment variables.
+    """
+    import os
+
+    # Write resolved values into environment
+    os.environ['REMY_MCP_HOST'] = host
+    os.environ['REMY_MCP_PORT'] = str(port)
+    os.environ['REMY_API_URL'] = api_url
+
+    # Delegate to the MCP server main()
+    from remy.mcp.__main__ import main as mcp_main
+    mcp_main()
 
 
 @main.command()

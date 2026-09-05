@@ -19,33 +19,16 @@ import sys
 def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
-    parser = argparse.ArgumentParser(
-        description="Remy FastAPI HTTP API server",
-        prog="python -m remy.api",
-    )
-    parser.add_argument(
-        "--cache",
-        default=os.environ.get("REMY_CACHE", ""),
-        help="Location of the Remy notecard cache (default: $REMY_CACHE)",
-    )
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("REMY_API_HOST", "127.0.0.1"),
-        help="Bind host (default: $REMY_API_HOST, fallback 127.0.0.1)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("REMY_API_PORT", "42625")),
-        help="Bind port (default: $REMY_API_PORT, fallback 42625)",
-    )
-    args = parser.parse_args()
+     #raise RuntimeError(sys.argv)
 
-    cache_path = args.cache
+    host = os.environ.get("REMY_API_HOST", "127.0.0.1")
+    port = int(os.environ.get("REMY_API_PORT", "42625"))
+    cache_path = os.environ.get("REMY_CACHE")
+
     if not cache_path:
         print(
             "Error: No cache location specified. "
-            "Use --cache or set the REMY_CACHE environment variable.",
+            "Set the REMY_CACHE environment variable.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -67,7 +50,7 @@ def main():
 
     import uvicorn
     try:
-        uvicorn.run(app_module.app, host=args.host, port=args.port)
+        uvicorn.run(app_module.app, host=host, port=port)
     finally:
         if _observer is not None:
             _observer.stop()

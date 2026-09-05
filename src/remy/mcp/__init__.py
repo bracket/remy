@@ -7,11 +7,11 @@ through the FastAPI HTTP API; this module does not import Remy Python
 modules directly.
 
 Configuration (environment variables):
-    REMY_API_URL       — Base URL of the Remy FastAPI backend (default: http://localhost:5000)
+    REMY_API_URL       — Base URL of the Remy FastAPI backend (default: http://localhost:42625)
     REMY_MCP_TIMEOUT   — HTTP request timeout in seconds (default: 30)
     REMY_MCP_LOG_LEVEL — Logging level (default: WARNING)
     REMY_MCP_HOST      — Host to bind the MCP server to (default: localhost)
-    REMY_MCP_PORT      — Port to bind the MCP server to (default: 8080)
+    REMY_MCP_PORT      — Port to bind the MCP server to (default: 42626)
 """
 
 import datetime
@@ -26,11 +26,11 @@ from fastmcp import FastMCP
 # Configuration
 # ---------------------------------------------------------------------------
 
-API_BASE_URL: str = os.environ.get("REMY_API_URL", "http://localhost:5000")
+API_BASE_URL: str = os.environ.get("REMY_API_URL", "http://localhost:42625")
 TIMEOUT: float = float(os.environ.get("REMY_MCP_TIMEOUT", "30"))
 LOG_LEVEL: str = os.environ.get("REMY_MCP_LOG_LEVEL", "WARNING").upper()
 MCP_HOST: str = os.environ.get("REMY_MCP_HOST", "localhost")
-MCP_PORT: int = int(os.environ.get("REMY_MCP_PORT", "8080"))
+MCP_PORT: int = int(os.environ.get("REMY_MCP_PORT", "42626"))
 
 # ---------------------------------------------------------------------------
 # Logging

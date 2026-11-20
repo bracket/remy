@@ -9,6 +9,6 @@ images:
       - amd64
       - arm64
     build-args:
-      REMY_VERSION: "0.1.1"
+      REMY_VERSION: "0.1.2"
     build-secrets:
       PIP_EXTRA_INDEX_URL: "${..images.build.pip_extra_index_url}"

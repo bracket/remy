@@ -4,7 +4,7 @@
 
 This document defines the RESTful HTTP API for Remy, implemented using FastAPI. The API exposes the functionality of the Remy CLI commands (`query`, `index`, `macro`) as HTTP endpoints with JSON responses and provides automatic OpenAPI/Swagger documentation.
 
-The API is read-only and mirrors the CLI's read capabilities. All responses are JSON. Streaming is supported for large result sets.
+The API supports notecard writes as well as the CLI's read capabilities. All responses are JSON. Streaming is supported for large result sets.
 
 ---
 
@@ -56,6 +56,7 @@ All error responses share the following JSON schema:
 |-------------|---------|
 | `400 Bad Request` | Invalid query expression, incompatible options, or malformed parameter |
 | `404 Not Found` | Requested resource (notecard, index, macro) does not exist |
+| `409 Conflict` | A target label belongs to another notecard |
 | `422 Unprocessable Entity` | FastAPI validation error (wrong parameter type, missing required field) |
 | `500 Internal Server Error` | Unexpected server-side error |
 
@@ -90,6 +91,38 @@ curl -i http://localhost:5000/api
 ---
 
 ### 2. Notecards
+
+#### `POST /api/notecard`
+
+Create, replace, rename, or delete a notecard by label. The JSON body accepts
+optional `source_label` (string or null), `target_labels` (string, nonempty
+array of strings, or null), and `text` (string or null). `text` is the card
+body only, without the `NOTECARD` header; null means an empty body when
+creating or replacing.
+
+| Source | Target labels | Text | Operation |
+|--------|---------------|------|-----------|
+| null | null | any | Create with a generated label |
+| null | supplied | any | Create with those labels |
+| found | supplied | any | Replace the card, including its labels |
+| found | null | null | Delete the card |
+| not found | null | null | No operation |
+| not found | supplied | any | 404 |
+
+An empty target list, invalid or repeated labels, a body containing a notecard
+header, or non-null text with null target labels and a non-null source returns
+400. Labels already belonging to another card return 409. Writes are hard
+deletes/replacements, without locking or version checks. Created and replaced
+cards are stored in new timestamped files below the cache root.
+
+The response contains `result` (`created`, `replaced`, `deleted`, or `noop`),
+`labels`, and `raw`. For deletion and no-op, `labels` is `[]` and `raw` is
+null. For example, the request
+`{"target_labels": ["note", "alias"], "text": "Body\n"}` returns:
+
+```json
+{"result": "created", "labels": ["note", "alias"], "raw": "NOTECARD note alias\nBody\n"}
+```
 
 #### `GET /api/notecard/{card_label}`
 

@@ -39,6 +39,12 @@ class TestHandleApiResponse:
         with pytest.raises(ValueError, match="Unprocessable"):
             handle_api_response(resp)
 
+    def test_conflict_raises_value_error(self):
+        from remy.mcp import handle_api_response
+        resp = _make_response(409, {"detail": "Label already used"})
+        with pytest.raises(ValueError, match="Label already used"):
+            handle_api_response(resp)
+
     def test_server_error_raises_runtime_error(self):
         from remy.mcp import handle_api_response
         resp = _make_response(500, {"detail": "Internal error"})
@@ -127,6 +133,27 @@ class TestQueryNotecards:
 # ---------------------------------------------------------------------------
 # get_notecard
 # ---------------------------------------------------------------------------
+
+def test_replace_notecard_posts_arguments():
+    from remy.mcp import replace_notecard
+    data = {"result": "replaced", "labels": ["new", "alias"], "raw": "NOTECARD new alias\nbody"}
+    with patch("remy.mcp.get_client") as get_client:
+        client = get_client.return_value
+        client.post.return_value = _make_response(200, data)
+        assert replace_notecard("old", ["new", "alias"], "body") == data
+    client.post.assert_called_once_with("/api/notecard", json={
+        "source_label": "old", "target_labels": ["new", "alias"], "text": "body",
+    })
+
+
+@pytest.mark.parametrize("status", [400, 404, 409])
+def test_replace_notecard_propagates_api_error(status):
+    from remy.mcp import replace_notecard
+    with patch("remy.mcp.get_client") as get_client:
+        get_client.return_value.post.return_value = _make_response(status, {"detail": "write error"})
+        with pytest.raises(ValueError, match="write error"):
+            replace_notecard()
+
 
 class TestGetNotecard:
     def test_found(self):

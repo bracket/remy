@@ -1,8 +1,8 @@
 """
 FastAPI application for the Remy HTTP API.
 
-Exposes Remy's read-only functionality (query, index, macro) as RESTful JSON
-endpoints with automatic OpenAPI documentation.
+Exposes Remy's notecard management, query, index, and macro functionality as
+RESTful JSON endpoints with automatic OpenAPI documentation.
 """
 
 import json
@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, StrictStr
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,43 @@ def health_check():
 # ---------------------------------------------------------------------------
 # Notecards
 # ---------------------------------------------------------------------------
+
+class NotecardWriteRequest(BaseModel):
+    source_label: Optional[StrictStr] = None
+    target_labels: Optional[StrictStr | list[StrictStr]] = None
+    text: Optional[StrictStr] = None
+
+
+@app.post("/api/notecard", summary="Create, replace, or delete a notecard")
+def write_notecard(request: NotecardWriteRequest):
+    from remy.cli.__main__ import format_notecard_raw
+    from remy.notecard_write import (
+        CardNotFoundError, InvalidWriteError, LabelConflictError, replace_card,
+    )
+
+    try:
+        result, card = replace_card(
+            get_cache(), request.source_label, request.target_labels, request.text,
+        )
+    except InvalidWriteError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except CardNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LabelConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Notecard write failed")
+        raise HTTPException(status_code=500, detail="Unable to write notecard.") from exc
+    finally:
+        invalidate_cache(reason="notecard write")
+    return {
+        "result": result.value,
+        "labels": card.labels if card is not None else [],
+        "raw": format_notecard_raw(card) if card is not None else None,
+    }
+
 
 @app.get("/api/notecard/{card_label}", summary="Retrieve a notecard by label")
 def get_notecard(card_label: str):

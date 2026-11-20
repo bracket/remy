@@ -79,6 +79,82 @@ def test_get_notecard_not_found(client):
     assert "detail" in response.json()
 
 
+def test_write_notecard_lifecycle(tmp_path):
+    client = _make_client(tmp_path)
+    assert client.get("/api/notecard/one").status_code == 404
+    response = client.post("/api/notecard", json={
+        "target_labels": ["one", "alias", "third"], "text": "first\n",
+    })
+    assert response.status_code == 200
+    assert response.json() == {
+        "result": "created", "labels": ["one", "alias", "third"],
+        "raw": "NOTECARD one alias third\nfirst\n",
+    }
+    assert client.get("/api/notecard/alias").json()["raw"] == response.json()["raw"]
+
+    response = client.post("/api/notecard", json={
+        "source_label": "alias", "target_labels": "renamed", "text": "second",
+    })
+    assert response.json() == {
+        "result": "replaced", "labels": ["renamed"], "raw": "NOTECARD renamed\nsecond\n",
+    }
+    assert client.get("/api/notecard/one").status_code == 404
+    assert client.get("/api/notecard/renamed").json()["raw"] == "NOTECARD renamed\nsecond\n"
+    response = client.post("/api/notecard", json={"source_label": "renamed"})
+    assert response.json() == {"result": "deleted", "labels": [], "raw": None}
+    assert client.get("/api/notecard/renamed").status_code == 404
+    response = client.post("/api/notecard", json={"source_label": "missing"})
+    assert response.json() == {"result": "noop", "labels": [], "raw": None}
+
+
+def test_write_notecard_generated_label_and_errors(tmp_path):
+    client = _make_client(tmp_path)
+    created = client.post("/api/notecard", json={"text": "generated"})
+    assert created.status_code == 200
+    label = created.json()["labels"][0]
+    assert len(label) == 64
+    for data, status in [
+        ({"target_labels": []}, 400),
+        ({"target_labels": ["invalid label"]}, 400),
+        ({"target_labels": ["x", "x"]}, 400),
+        ({"target_labels": "x", "text": "NOTECARD other\n"}, 400),
+        ({"source_label": label, "text": "bad"}, 400),
+        ({"source_label": "missing", "target_labels": "x"}, 404),
+        ({"target_labels": label}, 409),
+    ]:
+        response = client.post("/api/notecard", json=data)
+        assert response.status_code == status
+        assert response.json()["detail"]
+    assert client.get(f"/api/notecard/{label}").json()["raw"] == f"NOTECARD {label}\ngenerated\n"
+
+
+def test_write_notecard_reports_unexpected_failure(tmp_path, monkeypatch):
+    from remy import notecard_write
+
+    def fail(*args):
+        raise OSError("disk failure")
+
+    monkeypatch.setattr(notecard_write, "replace_card", fail)
+    response = _make_client(tmp_path).post("/api/notecard", json={})
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Unable to write notecard."}
+
+
+def test_write_notecard_invalidates_cache_on_failure(tmp_path, monkeypatch):
+    from remy import notecard_write
+    import remy.api.app as app_module
+
+    def fail(*args):
+        raise OSError("disk failure")
+
+    reasons = []
+    client = _make_client(tmp_path)
+    monkeypatch.setattr(notecard_write, "replace_card", fail)
+    monkeypatch.setattr(app_module, "invalidate_cache", lambda reason="unknown": reasons.append(reason))
+    assert client.post("/api/notecard", json={}).status_code == 500
+    assert reasons == ["notecard write"]
+
+
 # ---------------------------------------------------------------------------
 # GET /api/query
 # ---------------------------------------------------------------------------
@@ -604,4 +680,3 @@ def test_fs_watcher_invalidates_cache_on_change(tmp_path):
     finally:
         observer.stop()
         observer.join()
-

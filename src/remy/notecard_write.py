@@ -78,7 +78,7 @@ def _cut_card(card):
 
     temp_path = None
     try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as fd:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".remy-write-", delete=False) as fd:
             temp_path = Path(fd.name)
             fd.write(remaining)
         os.chmod(temp_path, path.stat().st_mode)

@@ -184,6 +184,11 @@ def write_notecard(request: NotecardWriteRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except LabelConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Notecard write failed")
+        raise HTTPException(status_code=500, detail="Unable to write notecard.") from exc
     invalidate_cache(reason="notecard write")
     return {
         "result": result.value,

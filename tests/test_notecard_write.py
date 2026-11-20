@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import os
 import re
 from unittest.mock import patch
 
@@ -61,6 +62,31 @@ def test_delete_and_noop(tmp_path):
     assert replace_card(cache(tmp_path), "alias", None, None) == (WriteResult.DELETED, None)
     assert not path.exists()
     assert replace_card(cache(tmp_path), "missing", None, None) == (WriteResult.NOOP, None)
+
+
+def test_delete_middle_card_preserves_both_neighbors(tmp_path):
+    path = tmp_path / "cards.ntc"
+    first = b"NOTECARD first\r\nfirst body\r\n"
+    middle = b"NOTECARD middle\r\nmiddle body\r\n"
+    last = b"NOTECARD last\r\nlast body"
+    path.write_bytes(first + middle + last)
+    assert replace_card(cache(tmp_path), "middle", None, None) == (WriteResult.DELETED, None)
+    assert path.read_bytes() == first + last
+
+
+def test_cut_temp_file_is_hidden_from_cache(tmp_path):
+    path = tmp_path / "cards.ntc"
+    path.write_text("NOTECARD one\nfirst\nNOTECARD two\nsecond\n")
+    real_replace = os.replace
+
+    def check_and_replace(source, destination):
+        assert source.name.startswith(".")
+        assert set(cache(tmp_path).cards_by_label) == {"one", "two"}
+        real_replace(source, destination)
+
+    with patch("remy.notecard_write.os.replace", side_effect=check_and_replace):
+        replace_card(cache(tmp_path), "one", None, None)
+    assert set(cache(tmp_path).cards_by_label) == {"two"}
 
 
 @pytest.mark.parametrize("source,labels,text", [

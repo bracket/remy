@@ -117,10 +117,10 @@ cards are stored in new timestamped files below the cache root.
 
 The response contains `result` (`created`, `replaced`, `deleted`, or `noop`),
 `labels`, and `raw`. For deletion and no-op, `labels` is `[]` and `raw` is
-null. For example:
+null. For example, the request
+`{"target_labels": ["note", "alias"], "text": "Body\n"}` returns:
 
 ```json
-// Request: {"target_labels": ["note", "alias"], "text": "Body\n"}
 {"result": "created", "labels": ["note", "alias"], "raw": "NOTECARD note alias\nBody\n"}
 ```
 

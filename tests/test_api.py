@@ -128,6 +128,18 @@ def test_write_notecard_generated_label_and_errors(tmp_path):
     assert client.get(f"/api/notecard/{label}").json()["raw"] == f"NOTECARD {label}\ngenerated"
 
 
+def test_write_notecard_reports_unexpected_failure(tmp_path, monkeypatch):
+    from remy import notecard_write
+
+    def fail(*args):
+        raise OSError("disk failure")
+
+    monkeypatch.setattr(notecard_write, "replace_card", fail)
+    response = _make_client(tmp_path).post("/api/notecard", json={})
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Unable to write notecard."}
+
+
 # ---------------------------------------------------------------------------
 # GET /api/query
 # ---------------------------------------------------------------------------

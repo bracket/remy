@@ -25,3 +25,13 @@ def test_from_path():
         print(card)
         print(card.source_url)
         print(card.content)
+
+
+def test_from_file_with_many_labels(tmp_path):
+    from remy.notecard import from_file
+
+    path = tmp_path / "cards.ntc"
+    path.write_text("NOTECARD first\none\nNOTECARD second alias third fourth\ntwo\n")
+    cards = list(from_file(path))
+    assert [card.labels for card in cards] == [["first"], ["second", "alias", "third", "fourth"]]
+    assert [card.content for card in cards] == ["one\n", "two\n"]

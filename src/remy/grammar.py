@@ -12,7 +12,7 @@ def notecard_grammar(compile = True):
     g['label_character'] = r'[-_0-9a-zA-Z]'
     g['label']           = r'{label_character}+'
     g['labels_tail']     = r'(?:\s+{label})'
-    g['labels']          = r'{label}{labels_tail}?'
+    g['labels']          = r'{label}{labels_tail}*'
     g['endline']         = r'\r\n|\n'
     g['endblock']       = r'(?:\r\n|\n)(?:\r\n|\n)'
 

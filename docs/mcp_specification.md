@@ -93,6 +93,34 @@ The MCP server exposes the following tools. Tool names follow MCP conventions (l
 
 ---
 
+### `replace_notecard`
+
+Create, replace, rename, or delete a notecard through `POST /api/notecard`.
+All arguments are optional: `source_label` is an existing label or null;
+`target_labels` is a string, a nonempty array of strings, or null; and `text`
+is the body without the header (null means empty for create/replace).
+
+| Source | Target labels | Text | Result |
+|--------|---------------|------|--------|
+| null | null | any | Create with a generated label |
+| null | supplied | any | Create with those labels |
+| found | supplied | any | Replace the body and labels |
+| found | null | null | Delete |
+| missing | null | null | No operation |
+| missing | supplied | any | Error |
+
+An empty target list is invalid. With a non-null source, null target labels
+require null text. Invalid labels, duplicate labels, body headers, missing
+sources for replacement, and labels belonging to another card produce errors.
+The response has `result`, `labels`, and `raw`; deleted and no-op results have
+empty labels and null raw text. Writes have no locking or version checks.
+
+```json
+{"source_label": "old", "target_labels": ["new", "alias"], "text": "Updated body\n"}
+```
+
+---
+
 ### 1. `query_notecards`
 
 Query and filter notecards using the Remy query language. Returns matching notecards as structured JSON objects.
@@ -692,7 +720,7 @@ All tools should follow this error handling pattern:
 
 1. **404 Not Found**: Raise `ValueError` with a descriptive message (e.g., `"Notecard 'foo' not found"`).
 2. **400 Bad Request**: Raise `ValueError` with the `detail` field from the API response.
-3. **422 Unprocessable Entity**: Raise `ValueError` indicating invalid parameters.
+3. **409 Conflict / 422 Unprocessable Entity**: Raise `ValueError` with the API detail.
 4. **500 Internal Server Error**: Raise `RuntimeError` with the `detail` field from the API response.
 5. **Connection errors**: Let `httpx` exceptions propagate; `fast_mcp` will convert them to MCP errors.
 
@@ -701,7 +729,7 @@ def handle_api_response(response: httpx.Response) -> dict:
     if response.status_code == 404:
         detail = response.json().get("detail", "Resource not found")
         raise ValueError(detail)
-    if response.status_code in (400, 422):
+    if response.status_code in (400, 409, 422):
         detail = response.json().get("detail", "Bad request")
         raise ValueError(detail)
     if response.status_code >= 500:
@@ -837,7 +865,7 @@ When MCP streaming is standardized, `query_notecards` and `dump_field_index` sho
 
 ### Write operations
 
-The current specification is read-only, mirroring the read-only FastAPI API. Future versions could expose notecard creation, modification, and deletion if the FastAPI API adds write endpoints.
+The `replace_notecard` tool exposes notecard creation, modification, and deletion through the FastAPI API.
 
 ### Resource exposure
 

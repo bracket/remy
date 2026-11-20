@@ -69,7 +69,7 @@ def handle_api_response(response: httpx.Response):
     if response.status_code == 404:
         detail = response.json().get("detail", "Resource not found")
         raise ValueError(detail)
-    if response.status_code in (400, 422):
+    if response.status_code in (400, 409, 422):
         detail = response.json().get("detail", "Bad request")
         raise ValueError(detail)
     if response.status_code >= 500:
@@ -142,6 +142,35 @@ def get_notecard(label: str) -> dict:
     """
     logger.debug("GET /api/notecard/%s", label)
     response = get_client().get(f"/api/notecard/{label}")
+    logger.debug("Response: %d", response.status_code)
+    return handle_api_response(response)
+
+
+@mcp.tool()
+def replace_notecard(
+    source_label: Optional[str] = None,
+    target_labels: Optional[str | list[str]] = None,
+    text: Optional[str] = None,
+) -> dict:
+    """Create, replace, rename, or delete a notecard by label.
+
+    With no source label, create a card using target_labels, or generate one
+    label if target_labels is null. With a found source and target labels,
+    replace its body and labels (including renaming or changing aliases).
+    With a found source and null target_labels and text, delete it. With a
+    missing source and both target_labels and text null, do nothing. A missing
+    source with target labels is an error. Null target_labels with non-null
+    text is an error except when creating with no source. An empty target
+    label list is always an error.
+
+    Args:
+        source_label: Any label of the existing card, or null to create.
+        target_labels: New label or nonempty list of labels, or null.
+        text: Card body only; null means empty on create or replace.
+    """
+    payload = {"source_label": source_label, "target_labels": target_labels, "text": text}
+    logger.debug("POST /api/notecard")
+    response = get_client().post("/api/notecard", json=payload)
     logger.debug("Response: %d", response.status_code)
     return handle_api_response(response)
 

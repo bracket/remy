@@ -1,3 +1,4 @@
+from contextlib import chdir
 from pathlib import Path
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
@@ -235,7 +236,7 @@ def test_query_format_json_pretty_print():
     assert '  ' in result_pretty.output  # 2-space indent
 
 
-def test_query_format_json_special_characters():
+def test_query_format_json_special_characters(tmp_path):
     """Test JSON output with special characters in notecard text."""
     from remy.cli.__main__ import main
     from click.testing import CliRunner
@@ -245,7 +246,7 @@ def test_query_format_json_special_characters():
     runner = CliRunner()
     
     # Create a temporary notecard file with special characters
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         test_file = Path('special.ntc')
         test_file.write_text('''NOTECARD special-chars
 :TAG: test
@@ -272,7 +273,7 @@ Text with tab\tcharacter
         assert '\t' in notecard_text
 
 
-def test_query_format_json_unicode_characters():
+def test_query_format_json_unicode_characters(tmp_path):
     """Test JSON output with Unicode characters."""
     from remy.cli.__main__ import main
     from click.testing import CliRunner
@@ -282,7 +283,7 @@ def test_query_format_json_unicode_characters():
     runner = CliRunner()
     
     # Create a temporary notecard file with Unicode characters
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         test_file = Path('unicode.ntc')
         test_file.write_text('''NOTECARD unicode-test
 :TAG: test
@@ -396,7 +397,7 @@ def test_query_format_json_full_notecard_text():
     assert 'Task in inbox with priority 3' in task1_text
 
 
-def test_query_output_reparseable():
+def test_query_output_reparseable(tmp_path):
     """Test that query output can be reparsed by Remy."""
     from remy.cli.__main__ import main
     from remy.notecard import from_file
@@ -407,7 +408,7 @@ def test_query_output_reparseable():
     assert result.exit_code == 0
 
     # Write output to a temporary file and try to reparse it
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         output_file = Path('output.ntc')
         output_file.write_text(result.output)
 
@@ -891,7 +892,7 @@ def test_edit_label_not_found(mock_execvp):
 
 
 @patch('os.execvp')
-def test_edit_create_new_notecard(mock_execvp):
+def test_edit_create_new_notecard(mock_execvp, tmp_path):
     """Test creating a new notecard without label."""
     from remy.cli.__main__ import main
     
@@ -903,7 +904,7 @@ def test_edit_create_new_notecard(mock_execvp):
         mock_datetime.UTC = UTC
         
         runner = CliRunner()
-        with runner.isolated_filesystem():
+        with chdir(tmp_path):
             cache_path = Path.cwd() / 'test_cache'
             cache_path.mkdir()
             
@@ -934,7 +935,7 @@ def test_edit_create_new_notecard(mock_execvp):
 
 
 @patch('os.execvp')
-def test_edit_new_notecard_existing_file(mock_execvp):
+def test_edit_new_notecard_existing_file(mock_execvp, tmp_path):
     """Test creating new notecard when file already exists."""
     from remy.cli.__main__ import main
     
@@ -946,7 +947,7 @@ def test_edit_new_notecard_existing_file(mock_execvp):
         mock_datetime.UTC = UTC
         
         runner = CliRunner()
-        with runner.isolated_filesystem():
+        with chdir(tmp_path):
             cache_path = Path.cwd() / 'test_cache'
             cache_path.mkdir()
             
@@ -973,7 +974,7 @@ def test_edit_new_notecard_existing_file(mock_execvp):
 
 
 @patch('os.execvp')
-def test_edit_creates_parent_directories(mock_execvp):
+def test_edit_creates_parent_directories(mock_execvp, tmp_path):
     """Test that edit creates parent directories for new notecards."""
     from remy.cli.__main__ import main
     
@@ -985,7 +986,7 @@ def test_edit_creates_parent_directories(mock_execvp):
         mock_datetime.UTC = UTC
         
         runner = CliRunner()
-        with runner.isolated_filesystem():
+        with chdir(tmp_path):
             cache_path = Path.cwd() / 'test_cache'
             cache_path.mkdir()
             
@@ -1368,14 +1369,14 @@ def test_query_fields_basic():
     assert 'task2,inbox' in result.output
 
 
-def test_query_fields_multiple_values():
+def test_query_fields_multiple_values(tmp_path):
     """Test --fields with fields that have multiple values (cross-product)."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
     
     # Create a test notecard with multiple tag values
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         import os
         os.makedirs('.remy')
         with open('.remy/config.py', 'w') as f:
@@ -1426,13 +1427,13 @@ def test_query_fields_missing_field():
     assert has_empty_priority, "Expected at least one card to have missing priority field"
 
 
-def test_query_fields_csv_quoting_comma():
+def test_query_fields_csv_quoting_comma(tmp_path):
     """Test CSV quoting for values with commas."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
     
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         import os
         os.makedirs('.remy')
         with open('.remy/config.py', 'w') as f:
@@ -1458,13 +1459,13 @@ Test
         assert 'card1,"Smith, John"' in result.output
 
 
-def test_query_fields_csv_quoting_quotes():
+def test_query_fields_csv_quoting_quotes(tmp_path):
     """Test CSV quoting for values with quotes."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
     
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         import os
         os.makedirs('.remy')
         with open('.remy/config.py', 'w') as f:
@@ -1695,13 +1696,13 @@ def test_query_fields_help():
     assert '--fields' in result.output
 
 
-def test_query_fields_cross_product_multiple_fields():
+def test_query_fields_cross_product_multiple_fields(tmp_path):
     """Test cross-product behavior with multiple fields having multiple values."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
     
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         import os
         os.makedirs('.remy')
         with open('.remy/config.py', 'w') as f:
@@ -1752,7 +1753,7 @@ def test_query_fields_preserves_field_name_case():
     assert 'Priority' in data[0]
 
 
-def test_query_fields_datetime_serialization():
+def test_query_fields_datetime_serialization(tmp_path):
     """Test that datetime and date objects are properly serialized to JSON."""
     from remy.cli.__main__ import main
     from datetime import datetime, date
@@ -1760,7 +1761,7 @@ def test_query_fields_datetime_serialization():
 
     runner = CliRunner()
     
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         import os
         os.makedirs('.remy')
         with open('.remy/config.py', 'w') as f:

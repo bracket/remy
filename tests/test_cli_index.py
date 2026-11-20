@@ -1,4 +1,5 @@
 """Tests for remy index CLI commands."""
+from contextlib import chdir
 from pathlib import Path
 from click.testing import CliRunner
 import json
@@ -282,14 +283,14 @@ def test_index_dump_delimiter_literal():
     assert '|' in result.output
 
 
-def test_index_dump_delimiter_escaping():
+def test_index_dump_delimiter_escaping(tmp_path):
     """Test that values containing delimiters are properly escaped."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
 
     # Create a test notecard cache with special characters
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         test_dir = Path('test_escape')
         test_dir.mkdir()
         config_dir = test_dir / '.remy'
@@ -528,14 +529,14 @@ def test_index_list_help():
     assert '--include-all-fields' in result.output
 
 
-def test_index_list_include_all_fields():
+def test_index_list_include_all_fields(tmp_path):
     """Test index list with --include-all-fields option."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
 
     # Create a test notecard cache with fields that don't have parsers
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         test_dir = Path('test_unparsed')
         test_dir.mkdir()
         config_dir = test_dir / '.remy'
@@ -583,14 +584,14 @@ Content
         assert len(lines) == 4
 
 
-def test_index_list_include_all_fields_json():
+def test_index_list_include_all_fields_json(tmp_path):
     """Test index list with --include-all-fields and JSON format."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
 
     # Create a test notecard cache with fields that don't have parsers
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         test_dir = Path('test_unparsed')
         test_dir.mkdir()
         config_dir = test_dir / '.remy'

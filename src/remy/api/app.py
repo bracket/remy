@@ -189,7 +189,8 @@ def write_notecard(request: NotecardWriteRequest):
     except Exception as exc:
         logger.exception("Notecard write failed")
         raise HTTPException(status_code=500, detail="Unable to write notecard.") from exc
-    invalidate_cache(reason="notecard write")
+    finally:
+        invalidate_cache(reason="notecard write")
     return {
         "result": result.value,
         "labels": card.labels if card is not None else [],

@@ -96,10 +96,10 @@ def test_write_notecard_lifecycle(tmp_path):
         "source_label": "alias", "target_labels": "renamed", "text": "second",
     })
     assert response.json() == {
-        "result": "replaced", "labels": ["renamed"], "raw": "NOTECARD renamed\nsecond",
+        "result": "replaced", "labels": ["renamed"], "raw": "NOTECARD renamed\nsecond\n",
     }
     assert client.get("/api/notecard/one").status_code == 404
-    assert client.get("/api/notecard/renamed").json()["raw"] == "NOTECARD renamed\nsecond"
+    assert client.get("/api/notecard/renamed").json()["raw"] == "NOTECARD renamed\nsecond\n"
     response = client.post("/api/notecard", json={"source_label": "renamed"})
     assert response.json() == {"result": "deleted", "labels": [], "raw": None}
     assert client.get("/api/notecard/renamed").status_code == 404
@@ -125,7 +125,7 @@ def test_write_notecard_generated_label_and_errors(tmp_path):
         response = client.post("/api/notecard", json=data)
         assert response.status_code == status
         assert response.json()["detail"]
-    assert client.get(f"/api/notecard/{label}").json()["raw"] == f"NOTECARD {label}\ngenerated"
+    assert client.get(f"/api/notecard/{label}").json()["raw"] == f"NOTECARD {label}\ngenerated\n"
 
 
 def test_write_notecard_reports_unexpected_failure(tmp_path, monkeypatch):
@@ -138,6 +138,21 @@ def test_write_notecard_reports_unexpected_failure(tmp_path, monkeypatch):
     response = _make_client(tmp_path).post("/api/notecard", json={})
     assert response.status_code == 500
     assert response.json() == {"detail": "Unable to write notecard."}
+
+
+def test_write_notecard_invalidates_cache_on_failure(tmp_path, monkeypatch):
+    from remy import notecard_write
+    import remy.api.app as app_module
+
+    def fail(*args):
+        raise OSError("disk failure")
+
+    reasons = []
+    client = _make_client(tmp_path)
+    monkeypatch.setattr(notecard_write, "replace_card", fail)
+    monkeypatch.setattr(app_module, "invalidate_cache", lambda reason="unknown": reasons.append(reason))
+    assert client.post("/api/notecard", json={}).status_code == 500
+    assert reasons == ["notecard write"]
 
 
 # ---------------------------------------------------------------------------

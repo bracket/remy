@@ -1,3 +1,4 @@
+from contextlib import chdir
 from pathlib import Path
 from click.testing import CliRunner
 
@@ -45,12 +46,12 @@ def test_complete_stdout():
     assert '_REMY_COMPLETE' in result.output
 
 
-def test_complete_with_output_option():
+def test_complete_with_output_option(tmp_path):
     """Test that complete -o writes to specified file."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         output_path = 'completion.sh'
         result = runner.invoke(main, ['complete', '-o', output_path])
 
@@ -65,12 +66,12 @@ def test_complete_with_output_option():
         assert 'Installation Instructions' in content
 
 
-def test_complete_with_positional_argument():
+def test_complete_with_positional_argument(tmp_path):
     """Test that complete with positional argument writes to specified file."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         output_path = 'completion.sh'
         result = runner.invoke(main, ['complete', output_path])
 
@@ -97,12 +98,12 @@ def test_complete_both_options_error():
     assert 'positional argument' in result.output
 
 
-def test_complete_creates_parent_directories():
+def test_complete_creates_parent_directories(tmp_path):
     """Test that complete creates parent directories if they don't exist."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         output_path = 'nested/dir/completion.sh'
         result = runner.invoke(main, ['complete', '-o', output_path])
 
@@ -130,13 +131,13 @@ def test_complete_script_has_installation_header():
     assert any('sudo cp' in line or 'sudo apt-get install' in line for line in output_lines)
 
 
-def test_complete_script_valid_bash_syntax():
+def test_complete_script_valid_bash_syntax(tmp_path):
     """Test that the generated script is valid bash."""
     from remy.cli.__main__ import main
     import subprocess
 
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         output_path = 'completion.sh'
         result = runner.invoke(main, ['complete', '-o', output_path])
 
@@ -183,12 +184,12 @@ def test_complete_script_contains_completion_function():
     assert 'complete' in result.output and '_remy_completion' in result.output and 'remy' in result.output
 
 
-def test_complete_long_output_option():
+def test_complete_long_output_option(tmp_path):
     """Test that --output long form works."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         output_path = 'completion.sh'
         result = runner.invoke(main, ['complete', '--output', output_path])
 
@@ -196,12 +197,12 @@ def test_complete_long_output_option():
         assert Path(output_path).exists()
 
 
-def test_complete_file_write_error():
+def test_complete_file_write_error(tmp_path):
     """Test that file write errors are handled gracefully."""
     from remy.cli.__main__ import main
 
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with chdir(tmp_path):
         # Create a directory where we'll try to write a file
         Path('readonly_dir').mkdir()
         Path('readonly_dir').chmod(0o444)  # Make read-only

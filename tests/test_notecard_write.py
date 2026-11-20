@@ -37,6 +37,19 @@ def test_create_explicit_labels(tmp_path, labels, text):
     assert cache(tmp_path).find_card_by_label("one").content == (text or "")
 
 
+@pytest.mark.parametrize("text", ["body\n:STATUS: DONE", "body\n:STATUS: DONE\n"])
+def test_trailing_field_without_newline_is_parsed(tmp_path, text):
+    from remy.ast import Field
+    from remy.ast.parse import parse_content
+
+    replace_card(cache(tmp_path), None, "one", text)
+    path = next(tmp_path.rglob("*.ntc"))
+    assert path.read_text() == "NOTECARD one\nbody\n:STATUS: DONE\n"
+    content = cache(tmp_path).find_card_by_label("one").content
+    fields = [n for n in parse_content(content) if isinstance(n, Field)]
+    assert [(f.label, f.value) for f in fields] == [("STATUS", "DONE")]
+
+
 def test_replace_by_alias_preserves_other_card_bytes(tmp_path):
     path = tmp_path / "mixed.ntc"
     before = b"prefix\r\nNOTECARD first old alias\r\nold body\r\n"
@@ -52,7 +65,7 @@ def test_replace_by_alias_preserves_other_card_bytes(tmp_path):
     assert path.read_bytes() == b"added line\r\nprefix\r\n" + after
     new_cache = cache(tmp_path)
     assert new_cache.find_card_by_label("old") is None
-    assert new_cache.find_card_by_label("new").content == "new body"
+    assert new_cache.find_card_by_label("new").content == "new body\n"
     assert new_cache.find_card_by_label("third").content == "other body\n"
 
 
@@ -124,7 +137,7 @@ def test_collision_retries_without_overwriting(tmp_path):
         result, _ = replace_card(cache(tmp_path), None, ["new"], "body")
     assert result is WriteResult.CREATED
     assert existing.read_text() == "NOTECARD existing\nold"
-    assert (directory / "02_030405000007.ntc").read_text() == "NOTECARD new\nbody"
+    assert (directory / "02_030405000007.ntc").read_text() == "NOTECARD new\nbody\n"
 
 
 def test_failed_cut_removes_new_file(tmp_path):

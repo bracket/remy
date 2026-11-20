@@ -118,6 +118,8 @@ def replace_card(cache, source_label=None, target_labels=None, text=None):
     if len(set(target_labels)) != len(target_labels):
         raise InvalidWriteError("target_labels must not contain duplicates")
     text = text if text is not None else ""
+    if text and not text.endswith(("\n", "\r")):
+        text += "\n"
     if any(grammar["notecard_start_line"].match(line) for line in StringIO(text, newline=None)):
         raise InvalidWriteError("text must not contain a notecard header")
 
